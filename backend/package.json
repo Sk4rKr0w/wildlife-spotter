@@ -1,0 +1,19 @@
+{
+  "name": "wildlifespotter-backend",
+  "version": "1.0.0",
+  "description": "WildLifeSpotter app backend",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sk4rKr0w/wildlife-spotter.git"
+  },
+  "author": "Lorenzo Thomas Contessa, Kevin Forte",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Sk4rKr0w/wildlife-spotter/issues"
+  },
+  "homepage": "https://github.com/Sk4rKr0w/wildlife-spotter#readme"
+}
