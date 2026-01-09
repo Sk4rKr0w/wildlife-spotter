@@ -20,18 +20,18 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.wildlifespotter.app.models.AuthViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun SignIn(
+    authViewModel: AuthViewModel = viewModel(),
     onSignInClick: () -> Unit = {},
     onForgotPasswordClick: () -> Unit = {},
     onCreateAccountClick: () -> Unit = {}
 ) {
 
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-
     var emailError by remember { mutableStateOf(false) }
     var passwordError by remember { mutableStateOf(false) }
 
@@ -75,9 +75,9 @@ fun SignIn(
 
             // EMAIL
             OutlinedTextField(
-                value = email,
+                value = authViewModel.email,
                 onValueChange = {
-                    email = it
+                    authViewModel.email = it
                     emailError = false
                 },
                 label = { Text("Email") },
@@ -108,9 +108,9 @@ fun SignIn(
 
             // PASSWORD
             OutlinedTextField(
-                value = password,
+                value = authViewModel.password,
                 onValueChange = {
-                    password = it
+                    authViewModel.password = it
                     passwordError = false
                 },
                 label = { Text("Password") },
@@ -172,8 +172,8 @@ fun SignIn(
             // SIGN IN BUTTON
             Button(
                 onClick = {
-                    emailError = email.isBlank() || !email.contains("@")
-                    passwordError = password.length < 6
+                    emailError = authViewModel.email.isBlank() || !authViewModel.email.contains("@")
+                    passwordError = authViewModel.password.length < 6
 
                     if (!emailError && !passwordError) {
                         onSignInClick()

@@ -18,20 +18,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wildlifespotter.app.R
+import com.wildlifespotter.app.models.AuthViewModel
 
 @Composable
 fun SignUp(
+    authViewModel: AuthViewModel = viewModel(),
+    onSignUpClick: () -> Unit = {},
     onBackToSignIn: () -> Unit = {}
 ) {
     var step by remember { mutableStateOf(0) }
     var acceptedTerms by remember { mutableStateOf(false) }
-
-    var username by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var confirmEmail by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
 
     var usernameError by remember { mutableStateOf(false) }
     var emailError by remember { mutableStateOf(false) }
@@ -91,20 +89,18 @@ fun SignUp(
             // ----- Contenuto principale -----
             Column(modifier = Modifier.padding(top = 130.dp)) {
                 when (step) {
-                    0 -> UsernameStep(username, onValueChange = { username = it }, error = usernameError)
+                    0 -> UsernameStep(authViewModel.username, onValueChange = { authViewModel.username = it }, error = usernameError)
                     1 -> EmailStep(
-                        email,
-                        confirmEmail,
-                        onEmailChange = { email = it },
-                        onConfirmEmailChange = { confirmEmail = it },
+                        authViewModel.email,
+                        onEmailChange = { authViewModel.email = it },
                         error = emailError
                     )
                     2 -> PasswordStep(
-                        password,
-                        confirmPassword,
+                        authViewModel.password,
+                        authViewModel.confirmPassword,
                         acceptedTerms,
-                        onPasswordChange = { password = it },
-                        onConfirmPasswordChange = { confirmPassword = it },
+                        onPasswordChange = { authViewModel.password = it },
+                        onConfirmPasswordChange = { authViewModel.confirmPassword = it },
                         onTermsChange = { acceptedTerms = it },
                         error = passwordError
                     )
@@ -123,24 +119,25 @@ fun SignUp(
                 PrimaryButton(
                     text = if (step < 2) "Continue" else "Sign Up",
                     enabled = when (step) {
-                        0 -> username.isNotBlank() && !usernameError
-                        1 -> email.isNotBlank() && confirmEmail.isNotBlank() && email.contains("@") && email == confirmEmail && !emailError
-                        2 -> password.isNotBlank() && confirmPassword.isNotBlank() && password == confirmPassword && acceptedTerms && !passwordError
+                        0 -> authViewModel.username.isNotBlank() && !usernameError
+                        1 -> authViewModel.email.isNotBlank() && authViewModel.email.contains("@") && !emailError
+                        2 -> authViewModel.password.isNotBlank() && authViewModel.confirmPassword.isNotBlank() && authViewModel.password == authViewModel.confirmPassword && acceptedTerms && !passwordError
                         else -> false
                     },
                     onClick = {
                         when (step) {
                             0 -> {
-                                if (username.isBlank()) usernameError = true else step++
+                                if (authViewModel.username.isBlank()) usernameError = true else step++
                             }
                             1 -> {
-                                if (email.isBlank() || !email.contains("@") || email != confirmEmail) emailError = true
+                                if (authViewModel.email.isBlank() || !authViewModel.email.contains("@")) emailError = true
                                 else step++
                             }
                             2 -> {
-                                if (password.isBlank() || password != confirmPassword || !acceptedTerms) passwordError = true
+                                if (authViewModel.password.isBlank() || authViewModel.password != authViewModel.confirmPassword || !acceptedTerms) passwordError = true
                                 else {
                                     // TODO: ASPETTARE IL BACKEND PER COMPLETARE SIGN-UP
+                                    onSignUpClick()
                                 }
                             }
                         }
@@ -164,14 +161,11 @@ fun UsernameStep(username: String, onValueChange: (String) -> Unit, error: Boole
 @Composable
 fun EmailStep(
     email: String,
-    confirmEmail: String,
     onEmailChange: (String) -> Unit,
-    onConfirmEmailChange: (String) -> Unit,
     error: Boolean
 ) {
     Title("Insert your email")
     AppTextField(placeholder = "Email", value = email, onValueChange = onEmailChange)
-    AppTextField(placeholder = "Confirm email", value = confirmEmail, onValueChange = onConfirmEmailChange)
     if (error) Text("Emails must be valid and match", color = Color.Red, style = MaterialTheme.typography.bodySmall)
 }
 
