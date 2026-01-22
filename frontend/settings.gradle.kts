@@ -19,5 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "WildlifeSpotter"
+rootProject.name = "WildLife Spotter"
 include(":app")
+ 
