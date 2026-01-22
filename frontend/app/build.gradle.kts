@@ -57,9 +57,11 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation("androidx.navigation:navigation-compose:2.7.3")
 
-    implementation(platform("com.google.firebase:firebase-bom:34.7.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.firebase:geofire-android-common:3.2.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -1,15 +1,22 @@
 package com.wildlifespotter.app
 
 import LoadingScreen
+import android.Manifest
+import android.os.Build
 import com.wildlifespotter.app.SignIn
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -21,6 +28,43 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            val context = LocalContext.current
+
+            val permissionsToRequest = remember {
+                val list = mutableListOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.CAMERA
+                )
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    list.add(Manifest.permission.ACTIVITY_RECOGNITION)
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    list.add(Manifest.permission.READ_MEDIA_IMAGES)
+                } else {
+                    list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+                }
+                list.toTypedArray()
+            }
+
+            val permissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestMultiplePermissions()
+            ) { permissions ->
+                val activityRecognitionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    permissions[Manifest.permission.ACTIVITY_RECOGNITION] == true
+                } else true
+
+                if (!activityRecognitionGranted) {
+                    Toast.makeText(context, "Without 'Physical Activity' permission, steps will not be counted.", Toast.LENGTH_LONG).show()
+                }
+            }
+
+            LaunchedEffect(Unit) {
+                permissionLauncher.launch(permissionsToRequest)
+            }
+
             AppNavigation()
         }
     }
@@ -104,7 +148,7 @@ fun AppNavigation() {
                 )
             }
 
-            // Home
+            // ----- Home -----
             composable("home") {
                 HomeScreen(
                     onLogout = {
