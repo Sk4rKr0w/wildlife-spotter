@@ -5,6 +5,8 @@ const path = require("path");
 const multer = require("multer");
 const Database = require("better-sqlite3");
 
+const checkAuth = require("./middleware/auth");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -61,8 +63,10 @@ function safeExtension(originalName, mimeType) {
   return "";
 }
 
-app.post("/images", upload.single("image"), (req, res) => {
+app.post("/images", checkAuth, upload.single("image"), (req, res) => {
   try {
+    console.log("Logged user:", req.user.email);
+    
     if (!req.file) {
       res.status(400).json({ error: "Missing image file (field name: image)" });
       return;
@@ -118,7 +122,7 @@ app.get("/images/:id", (req, res) => {
   }
 });
 
-app.get("/health", (req, res) => {
+app.get("/health", checkAuth, (req, res) => {
   res.json({ status: "ok" });
 });
 
