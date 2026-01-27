@@ -4,6 +4,8 @@
   "description": "WildLifeSpotter app backend",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -15,5 +17,11 @@
   "bugs": {
     "url": "https://github.com/Sk4rKr0w/wildlife-spotter/issues"
   },
-  "homepage": "https://github.com/Sk4rKr0w/wildlife-spotter#readme"
+  "homepage": "https://github.com/Sk4rKr0w/wildlife-spotter#readme",
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.6.0",
+    "multer": "^2.0.2"
+  }
 }
