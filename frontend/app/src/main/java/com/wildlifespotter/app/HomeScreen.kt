@@ -31,9 +31,12 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
-import java.util.UUID
 import java.io.File
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import com.wildlifespotter.app.interfaces.RetrofitInstance
 
 @Composable
 fun HomeScreen(onLogout: () -> Unit) {
@@ -111,12 +114,12 @@ fun HomeScreen(onLogout: () -> Unit) {
                 // Photo selected from Gallery
                 scope.launch {
                     isLoading = true
-                    uploadSighting(
+                    uploadSpot(
                         context = context,
                         species = speciesInput,
                         currentSteps = currentSteps,
                         currentAzimuth = currentAzimuth,
-                        imageId = UUID.randomUUID().toString()
+                        imageUri = uri
                     )
                     isLoading = false
                     speciesInput = "" // Field reset
@@ -133,12 +136,12 @@ fun HomeScreen(onLogout: () -> Unit) {
                 // Photo taken with Camera
                 scope.launch {
                     isLoading = true
-                    uploadSighting(
+                    uploadSpot(
                         context = context,
                         species = speciesInput,
                         currentSteps = currentSteps,
                         currentAzimuth = currentAzimuth,
-                        imageId = UUID.randomUUID().toString()
+                        imageUri = tempCameraUri!!
                     )
                     isLoading = false
                     speciesInput = "" // Field reset
@@ -230,19 +233,50 @@ fun createImageUri(context: Context): Uri {
     return FileProvider.getUriForFile(context, authority, file)
 }
 
+fun prepareImagePart(context: Context, uri: Uri): MultipartBody.Part? {
+    return try {
+        val contentResolver = context.contentResolver
+        val type = contentResolver.getType(uri) ?: "image/jpeg"
+
+        val inputStream = contentResolver.openInputStream(uri) ?: return null
+        val byteArray = inputStream.readBytes()
+        inputStream.close()
+
+        val requestBody = byteArray.toRequestBody(type.toMediaTypeOrNull())
+        MultipartBody.Part.createFormData("image", "upload.jpg", requestBody)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
 @SuppressLint("MissingPermission")
-suspend fun uploadSighting(
+suspend fun uploadSpot(
     context: Context,
     species: String,
     currentSteps: Float,
     currentAzimuth: Float,
-    imageId: String
+    imageUri: Uri
 ) {
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
     val locationClient = LocationServices.getFusedLocationProviderClient(context)
 
     try {
+        val imagePart = prepareImagePart(context, imageUri)
+        if (imagePart == null) {
+            Toast.makeText(context, "Error during image reading", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // Upload image to Backend
+        val response = RetrofitInstance.api.uploadImage(imagePart)
+        val imageId = response.id
+        if (imageId.isBlank()) {
+            Toast.makeText(context, "Error during image upload", Toast.LENGTH_LONG).show()
+            return
+        }
+
         // GPS Location
         val location: Location? = locationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
 
