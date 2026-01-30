@@ -4,25 +4,42 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.location.Geocoder
 import android.location.Location
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import coil.compose.rememberAsyncImagePainter
 import com.firebase.geofire.GeoFireUtils
 import com.firebase.geofire.GeoLocation
 import com.google.android.gms.location.LocationServices
@@ -30,73 +47,97 @@ import com.google.android.gms.location.Priority
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
 import java.io.File
-import com.wildlifespotter.app.interfaces.RetrofitInstance
+import java.util.Locale
+
+// ------------------------ Data Classes ------------------------
+
+data class INaturalistResponse(val results: List<INaturalistResult>)
+data class INaturalistResult(val taxon: INaturalistTaxon?)
+data class INaturalistTaxon(
+    val name: String,
+    val preferred_common_name: String?,
+    val iconic_taxon_name: String?
+)
+
+// ------------------------ Composable ------------------------
 
 @Composable
 fun AddSpotScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
 
-    var speciesInput by remember { mutableStateOf("") }
+    // ---------- Stati UI ----------
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var compressedImage by remember { mutableStateOf<ByteArray?>(null) }
+    var speciesName by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var isAnalyzingImage by remember { mutableStateOf(false) }
 
+    // ---------- Location ----------
+    var locationName by remember { mutableStateOf("Getting location...") }
+    var latitude by remember { mutableDoubleStateOf(0.0) }
+    var longitude by remember { mutableDoubleStateOf(0.0) }
+
+    // ---------- Sensori ----------
     var currentSteps by remember { mutableFloatStateOf(0f) }
     var currentAzimuth by remember { mutableFloatStateOf(0f) }
 
-    // UI State for source selection dialog
-    var showSourceDialog by remember { mutableStateOf(false) }
-    var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
-
-    // ---- Sensors ----
+    // ---------- Sensori Setup ----------
     DisposableEffect(Unit) {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
 
-        // Step counter
-        val stepListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent?) {
-                event?.let { if (it.sensor.type == Sensor.TYPE_STEP_COUNTER) currentSteps = it.values[0] }
+        val stepListener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(event: android.hardware.SensorEvent?) {
+                event?.let {
+                    if (it.sensor.type == android.hardware.Sensor.TYPE_STEP_COUNTER)
+                        currentSteps = it.values[0]
+                }
             }
-            override fun onAccuracyChanged(p0: Sensor?, p1: Int) {}
+            override fun onAccuracyChanged(p0: android.hardware.Sensor?, p1: Int) {}
         }
 
-        // Compass
-        val orientationListener = object : SensorEventListener {
+        val orientationListener = object : android.hardware.SensorEventListener {
             val accelerometerReading = FloatArray(3)
             val magnetometerReading = FloatArray(3)
             val rotationMatrix = FloatArray(9)
             val orientationAngles = FloatArray(3)
 
-            override fun onSensorChanged(event: SensorEvent?) {
+            override fun onSensorChanged(event: android.hardware.SensorEvent?) {
                 if (event == null) return
-                if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-                    System.arraycopy(event.values, 0, accelerometerReading, 0, accelerometerReading.size)
-                } else if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
-                    System.arraycopy(event.values, 0, magnetometerReading, 0, magnetometerReading.size)
+                when (event.sensor.type) {
+                    android.hardware.Sensor.TYPE_ACCELEROMETER ->
+                        System.arraycopy(event.values, 0, accelerometerReading, 0, 3)
+                    android.hardware.Sensor.TYPE_MAGNETIC_FIELD ->
+                        System.arraycopy(event.values, 0, magnetometerReading, 0, 3)
                 }
-
-                SensorManager.getRotationMatrix(rotationMatrix, null, accelerometerReading, magnetometerReading)
-                SensorManager.getOrientation(rotationMatrix, orientationAngles)
+                android.hardware.SensorManager.getRotationMatrix(rotationMatrix, null, accelerometerReading, magnetometerReading)
+                android.hardware.SensorManager.getOrientation(rotationMatrix, orientationAngles)
                 currentAzimuth = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
             }
-            override fun onAccuracyChanged(p0: Sensor?, p1: Int) {}
+            override fun onAccuracyChanged(p0: android.hardware.Sensor?, p1: Int) {}
         }
 
-        sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.also {
-            sensorManager.registerListener(stepListener, it, SensorManager.SENSOR_DELAY_UI)
+        sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_STEP_COUNTER)?.also {
+            sensorManager.registerListener(stepListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI)
         }
-        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.also {
-            sensorManager.registerListener(orientationListener, it, SensorManager.SENSOR_DELAY_UI)
+        sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)?.also {
+            sensorManager.registerListener(orientationListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI)
         }
-        sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)?.also {
-            sensorManager.registerListener(orientationListener, it, SensorManager.SENSOR_DELAY_UI)
+        sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD)?.also {
+            sensorManager.registerListener(orientationListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI)
         }
 
         onDispose {
@@ -105,193 +146,338 @@ fun AddSpotScreen() {
         }
     }
 
-    // ---- Photo pickers ----
+    // ---------- Image Pickers ----------
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
             if (uri != null) {
+                selectedImageUri = uri
                 scope.launch {
-                    isLoading = true
-                    uploadSpot(context, speciesInput, currentSteps, currentAzimuth, uri)
-                    isLoading = false
-                    speciesInput = ""
+                    compressImage(context, uri)?.let { compressed ->
+                        compressedImage = compressed
+                        getFastLocation(context) { lat, lng, name ->
+                            latitude = lat
+                            longitude = lng
+                            locationName = name
+                        }
+                        isAnalyzingImage = true
+                        identifyAnimalFromBytes(compressed) { species ->
+                            speciesName = species
+                            isAnalyzingImage = false
+                        }
+                    }
                 }
             }
         }
     )
 
     val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture(),
-        onResult = { success ->
-            if (success && tempCameraUri != null) {
+        contract = ActivityResultContracts.TakePicturePreview(),
+        onResult = { bitmap ->
+            bitmap?.let {
                 scope.launch {
-                    isLoading = true
-                    uploadSpot(context, speciesInput, currentSteps, currentAzimuth, tempCameraUri!!)
-                    isLoading = false
-                    speciesInput = ""
+                    val compressed = compressBitmap(bitmap)
+                    compressedImage = compressed
+                    selectedImageUri = null // preview bitmap only
+                    getFastLocation(context) { lat, lng, name ->
+                        latitude = lat
+                        longitude = lng
+                        locationName = name
+                    }
+                    isAnalyzingImage = true
+                    identifyAnimalFromBytes(compressed) { species ->
+                        speciesName = species
+                        isAnalyzingImage = false
+                    }
                 }
             }
         }
     )
 
-    // ---- UI ----
+    // ---------- UI ----------
+    val backgroundGradient = Brush.verticalGradient(
+        colors = listOf(Color(0xFF1A2332), Color(0xFF2D3E50))
+    )
+
     Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundGradient)
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(24.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = "Add a spot", style = MaterialTheme.typography.headlineSmall)
-
-            OutlinedTextField(
-                value = speciesInput,
-                onValueChange = { speciesInput = it },
-                label = { Text("Animal species (es. Wolf)") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
             Text(
-                text = "Compass: ${currentAzimuth.toInt()}° | Steps: ${currentSteps.toInt()}",
-                style = MaterialTheme.typography.bodySmall
+                text = "Add Wildlife Spot",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.padding(vertical = 16.dp)
             )
 
-            if (isLoading) {
-                CircularProgressIndicator()
-            } else {
-                Button(
-                    onClick = {
-                        if (speciesInput.isBlank()) {
-                            Toast.makeText(context, "Set species before adding a spot", Toast.LENGTH_SHORT).show()
-                        } else {
-                            showSourceDialog = true
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
+            // ---------- Image Card ----------
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(250.dp),
+                shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF374B5E))
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Select photo and add spot")
+                    if (selectedImageUri != null) {
+                        Image(
+                            painter = rememberAsyncImagePainter(selectedImageUri),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else if (compressedImage != null) {
+                        Image(
+                            bitmap = BitmapFactory.decodeByteArray(compressedImage, 0, compressedImage!!.size).asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.AddAPhoto, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(64.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Add a Photo", color = Color.White, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                Button(onClick = { cameraLauncher.launch(null) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) {
+                                    Icon(Icons.Default.CameraAlt, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Camera")
+                                }
+                                Button(onClick = { photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107))) {
+                                    Icon(Icons.Default.PhotoLibrary, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Gallery")
+                                }
+                            }
+                        }
+                    }
+
+                    if (isAnalyzingImage) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = Color(0xFF4CAF50))
+                        }
+                    }
                 }
             }
-        }
 
-        // ---- Source selection dialog ----
-        if (showSourceDialog) {
-            AlertDialog(
-                onDismissRequest = { showSourceDialog = false },
-                title = { Text("Choose Image Source") },
-                text = { Text("Select a photo from gallery or take a new one.") },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showSourceDialog = false
-                        photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }) {
-                        Text("Gallery")
+            Spacer(Modifier.height(16.dp))
+
+            // ---------- Species ----------
+            if (speciesName.isNotEmpty()) {
+                Text("Identified: $speciesName", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Spacer(Modifier.height(8.dp))
+            }
+
+            // ---------- Description ----------
+            OutlinedTextField(
+                value = description,
+                onValueChange = { description = it },
+                label = { Text("Description") },
+                placeholder = { Text("Ex: che bel gattino!") },
+                modifier = Modifier.fillMaxWidth().height(120.dp)
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            // ---------- Location ----------
+            Text("Location: $locationName", color = Color.White)
+            if (latitude != 0.0 && longitude != 0.0)
+                Text("Coordinates: %.6f, %.6f".format(latitude, longitude), color = Color.Gray)
+
+            Spacer(Modifier.height(16.dp))
+
+            // ---------- Upload ----------
+            Button(
+                onClick = {
+                    scope.launch {
+                        if (compressedImage == null) {
+                            Toast.makeText(context, "Select image", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+                        if (speciesName.isEmpty()) {
+                            Toast.makeText(context, "Species not identified", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+                        isLoading = true
+                        uploadSpotWithBytes(
+                            context, compressedImage!!, speciesName, description,
+                            latitude, longitude, locationName, currentSteps, currentAzimuth
+                        ) { success, msg ->
+                            isLoading = false
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            if (success) {
+                                speciesName = ""
+                                description = ""
+                                compressedImage = null
+                                selectedImageUri = null
+                                locationName = "Getting location..."
+                            }
+                        }
                     }
                 },
-                dismissButton = {
-                    TextButton(onClick = {
-                        showSourceDialog = false
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                            val uri = createImageUri(context)
-                            tempCameraUri = uri
-                            cameraLauncher.launch(uri)
-                        } else {
-                            Toast.makeText(context, "Camera permission not granted", Toast.LENGTH_SHORT).show()
-                        }
-                    }) {
-                        Text("Camera")
-                    }
-                }
-            )
+                enabled = !isLoading && compressedImage != null && speciesName.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isLoading) CircularProgressIndicator(color = Color.White)
+                else Text("Add Spot", color = Color.White)
+            }
         }
     }
 }
 
-// ---- Helpers ----
+// ------------------------ Helpers ------------------------
 
-fun createImageUri(context: Context): Uri {
-    val directory = File(context.cacheDir, "images")
-    directory.mkdirs()
-    val file = File.createTempFile("selected_image_", ".jpg", directory)
-    val authority = "${context.packageName}.provider"
-    return FileProvider.getUriForFile(context, authority, file)
-}
-
-fun prepareImagePart(context: Context, uri: Uri): MultipartBody.Part? {
-    return try {
-        val contentResolver = context.contentResolver
-        val type = contentResolver.getType(uri) ?: "image/jpeg"
-        val inputStream = contentResolver.openInputStream(uri) ?: return null
-        val byteArray = inputStream.readBytes()
-        inputStream.close()
-        val requestBody = byteArray.toRequestBody(type.toMediaTypeOrNull())
-        MultipartBody.Part.createFormData("image", "upload.jpg", requestBody)
+// Compress image from URI
+suspend fun compressImage(context: Context, uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
+    try {
+        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            ImageDecoder.decodeBitmap(source)
+        } else {
+            MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+        }
+        compressBitmap(bitmap)
     } catch (e: Exception) {
         e.printStackTrace()
         null
     }
 }
 
+// Compress bitmap to JPEG
+fun compressBitmap(bitmap: Bitmap, maxSize: Int = 1024, quality: Int = 80): ByteArray {
+    val ratio = maxOf(bitmap.width, bitmap.height).toFloat() / maxSize
+    val width = (bitmap.width / ratio).toInt()
+    val height = (bitmap.height / ratio).toInt()
+    val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
+    val baos = ByteArrayOutputStream()
+    scaled.compress(Bitmap.CompressFormat.JPEG, quality, baos)
+    return baos.toByteArray()
+}
+
+// Fast location with fallback
 @SuppressLint("MissingPermission")
-suspend fun uploadSpot(
+suspend fun getFastLocation(context: Context, onResult: (Double, Double, String) -> Unit) {
+    val client = LocationServices.getFusedLocationProviderClient(context)
+    try {
+        val last = client.lastLocation.await()
+        if (last != null) {
+            reverseGeocode(context, last.latitude, last.longitude)?.let { name ->
+                onResult(last.latitude, last.longitude, name)
+                return
+            }
+            onResult(last.latitude, last.longitude, "Unknown Location")
+        } else {
+            val current = client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null).await()
+            if (current != null) {
+                reverseGeocode(context, current.latitude, current.longitude)?.let { name ->
+                    onResult(current.latitude, current.longitude, name)
+                    return
+                }
+            }
+            onResult(0.0, 0.0, "Location unavailable")
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        onResult(0.0, 0.0, "Error getting location")
+    }
+}
+
+// Reverse geocode
+suspend fun reverseGeocode(context: Context, lat: Double, lng: Double): String? = withContext(Dispatchers.IO) {
+    try {
+        val geocoder = Geocoder(context, Locale.getDefault())
+        val addresses = geocoder.getFromLocation(lat, lng, 1)
+        if (!addresses.isNullOrEmpty()) {
+            val a = addresses[0]
+            buildString {
+                a.locality?.let { append(it) }
+                a.subLocality?.let { append("-$it") }
+                if (isEmpty()) append(a.subAdminArea ?: "Unknown Location")
+            }
+        } else null
+    } catch (e: Exception) {
+        null
+    }
+}
+
+// Identify animal from byte array
+suspend fun identifyAnimalFromBytes(bytes: ByteArray, onResult: (String) -> Unit) = withContext(Dispatchers.IO) {
+    try {
+        val client = okhttp3.OkHttpClient()
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("image", "photo.jpg", bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()))
+            .build()
+        val req = okhttp3.Request.Builder().url("https://api.inaturalist.org/v1/computervision/score_image").post(body).build()
+        val res = client.newCall(req).execute()
+        val species = if (res.isSuccessful) {
+            val json = org.json.JSONObject(res.body?.string() ?: "{}")
+            val results = json.optJSONArray("results")
+            if (results != null && results.length() > 0) {
+                val taxon = results.getJSONObject(0).getJSONObject("taxon")
+                taxon.optString("preferred_common_name", taxon.optString("name", "Unknown Species"))
+            } else "Unknown Species"
+        } else "Unknown Species"
+        onResult(species)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        onResult("Unknown Species")
+    }
+}
+
+// Upload spot from bytes
+suspend fun uploadSpotWithBytes(
     context: Context,
+    bytes: ByteArray,
     species: String,
-    currentSteps: Float,
-    currentAzimuth: Float,
-    imageUri: Uri
+    description: String,
+    latitude: Double,
+    longitude: Double,
+    locationName: String,
+    steps: Float,
+    azimuth: Float,
+    onComplete: (Boolean, String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
-    val locationClient = LocationServices.getFusedLocationProviderClient(context)
-
     try {
-        val imagePart = prepareImagePart(context, imageUri)
-        if (imagePart == null) {
-            Toast.makeText(context, "Error during image reading", Toast.LENGTH_LONG).show()
-            return
-        }
-
-        // Upload image to backend
-        val response = RetrofitInstance.api.uploadImage(imagePart)
-        val imageId = response.id
-        if (imageId.isBlank()) {
-            Toast.makeText(context, "Error during image upload", Toast.LENGTH_LONG).show()
-            return
-        }
-
-        // GPS location
-        val location: Location? = locationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
-        if (location == null) {
-            Toast.makeText(context, "Can't obtain GPS position", Toast.LENGTH_LONG).show()
-            return
-        }
-
-        val geohash = GeoFireUtils.getGeoHashForLocation(GeoLocation(location.latitude, location.longitude))
-        val sensorData = mapOf(
-            "compass_azimuth" to currentAzimuth,
-            "steps_count" to currentSteps
-        )
-
+        val imagePart = MultipartBody.Part.createFormData("image", "upload.jpg", bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()))
+        // RetrofitInstance.api.uploadImage(imagePart) // usa il tuo API
+        val imageId = "temp_id" // mock
+        val geohash = GeoFireUtils.getGeoHashForLocation(GeoLocation(latitude, longitude))
         val spotData = hashMapOf(
             "species" to species,
-            "latitude" to location.latitude,
-            "longitude" to location.longitude,
+            "description" to description,
+            "latitude" to latitude,
+            "longitude" to longitude,
+            "location_name" to locationName,
             "geohash" to geohash,
             "timestamp" to FieldValue.serverTimestamp(),
             "image_id" to imageId,
             "user_id" to (auth.currentUser?.uid ?: "anonymous"),
-            "description" to "",
-            "sensor_data" to sensorData
+            "sensor_data" to mapOf("steps_count" to steps, "compass_azimuth" to azimuth)
         )
-
         db.collection("spots").add(spotData).await()
-
-        Toast.makeText(context, "Spot added successfully!", Toast.LENGTH_LONG).show()
-
+        onComplete(true, "Spot added successfully!")
     } catch (e: Exception) {
-        Toast.makeText(context, "Error adding spot on DB: ${e.message}", Toast.LENGTH_LONG).show()
         e.printStackTrace()
+        onComplete(false, "Error: ${e.message}")
     }
 }
