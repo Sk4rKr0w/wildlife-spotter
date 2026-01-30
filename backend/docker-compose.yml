@@ -3,16 +3,15 @@ services:
     build:
       context: .
     ports:
-      - "3000:3000"
+      - "443:443"
     environment:
-      PORT: "3000"
+      PORT: "443"
       SSL_DIR: /app/data/ssl
       SSL_CERT_PATH: /app/data/ssl/cert.pem
       SSL_KEY_PATH: /app/data/ssl/key.pem
       LE_ENABLED: "true"
       LE_EMAIL: "lorenzo.contessa02@gmail.com"
-      LE_DOMAINS: "wildlifespotter.app,*.wildlifespotter.app"
-      LE_STAGING: "true"
+      LE_DOMAINS: "widlifespotter.app,*.widlifespotter.app"
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       LE_DIR: /app/data/letsencrypt
     volumes:
@@ -23,8 +22,7 @@ services:
     environment:
       LE_ENABLED: "true"
       LE_EMAIL: "lorenzo.contessa02@gmail.com"
-      LE_DOMAINS: "wildlifespotter.app,*.wildlifespotter.app"
-      LE_STAGING: "true"
+      LE_DOMAINS: "widlifespotter.app,*.widlifespotter.app"
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       LE_DIR: /app/data/letsencrypt
     volumes:

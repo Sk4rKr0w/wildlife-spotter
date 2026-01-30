@@ -19,7 +19,7 @@ interface BackendApi {
 }
 
 object RetrofitInstance {
-    private const val BASE_URL = "http://10.16.239.31:3000/"
+    private const val BASE_URL = "https://api.widlifespotter.app/"
 
     private val client by lazy {
         val logging = HttpLoggingInterceptor().apply {
