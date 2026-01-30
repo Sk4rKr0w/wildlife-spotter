@@ -475,6 +475,15 @@ suspend fun uploadSpotWithBytes(
             "sensor_data" to mapOf("steps_count" to steps, "compass_azimuth" to azimuth)
         )
         db.collection("spots").add(spotData).await()
+        
+        // ✅ INCREMENTA IL CONTATORE TOTALSPOTS DELL'UTENTE
+        val userId = auth.currentUser?.uid
+        if (userId != null) {
+            db.collection("users").document(userId)
+                .update("totalSpots", FieldValue.increment(1))
+                .await()
+        }
+        
         onComplete(true, "Spot added successfully!")
     } catch (e: Exception) {
         e.printStackTrace()
