@@ -33,7 +33,7 @@ fun MainScreen(
             modifier = Modifier.padding(paddingValues)
         ) {
             composable(Screen.Home.route) {
-                HomeScreen(navController)
+                HomeScreen()
             }
             composable(Screen.Add.route) {
                 AddSpotScreen()
