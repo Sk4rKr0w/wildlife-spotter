@@ -150,7 +150,7 @@ fun AppNavigation() {
 
             // ----- Home -----
             composable("home") {
-                HomeScreen(
+                MainScreen(
                     onLogout = {
                         authViewModel.logout()
                         navController.navigate("sign_in") {
