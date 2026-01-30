@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
 const multer = require("multer");
 const Database = require("better-sqlite3");
 
@@ -9,6 +10,8 @@ const checkAuth = require("./middleware/auth");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
+const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
 
 const DATA_DIR = path.join(__dirname, "data");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
@@ -129,9 +132,26 @@ app.get("/health", checkAuth, (req, res) => {
 try {
   const db = initDb();
   app.locals.db = db;
-  app.listen(PORT, () => {
-    console.log(`Backend listening on http://localhost:${PORT}`);
-  });
+  if (
+    SSL_CERT_PATH &&
+    SSL_KEY_PATH &&
+    fs.existsSync(SSL_CERT_PATH) &&
+    fs.existsSync(SSL_KEY_PATH)
+  ) {
+    // Start HTTPS if certs are available
+    const sslOptions = {
+      cert: fs.readFileSync(SSL_CERT_PATH),
+      key: fs.readFileSync(SSL_KEY_PATH),
+    };
+    https.createServer(sslOptions, app).listen(PORT, () => {
+      console.log(`Backend listening on https://localhost:${PORT}`);
+    });
+  } else {
+    // Fallback to HTTP when no certs are present
+    app.listen(PORT, () => {
+      console.log(`Backend listening on http://localhost:${PORT}`);
+    });
+  }
 } catch (err) {
   console.error("Failed to start server", err);
   process.exit(1);
