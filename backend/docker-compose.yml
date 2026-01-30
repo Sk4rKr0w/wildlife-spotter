@@ -15,7 +15,7 @@ services:
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       LE_DIR: /app/data/letsencrypt
     volumes:
-      - backend-data:/app/data
+      - /opt/data:/app/data
   certbot:
     build:
       context: .
@@ -26,8 +26,5 @@ services:
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       LE_DIR: /app/data/letsencrypt
     volumes:
-      - backend-data:/app/data
+      - /opt/data:/app/data
     command: ["/app/letsencrypt-renew.sh"]
-
-volumes:
-  backend-data:

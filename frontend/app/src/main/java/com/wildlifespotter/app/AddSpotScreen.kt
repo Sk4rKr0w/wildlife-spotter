@@ -47,6 +47,7 @@ import com.google.android.gms.location.Priority
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.wildlifespotter.app.interfaces.RetrofitInstance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -459,7 +460,7 @@ suspend fun uploadSpotWithBytes(
     val auth = FirebaseAuth.getInstance()
     try {
         val imagePart = MultipartBody.Part.createFormData("image", "upload.jpg", bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()))
-        // RetrofitInstance.api.uploadImage(imagePart) // usa il tuo API
+        RetrofitInstance.api.uploadImage(imagePart)
         val imageId = "temp_id" // mock
         val geohash = GeoFireUtils.getGeoHashForLocation(GeoLocation(latitude, longitude))
         val spotData = hashMapOf(
@@ -479,8 +480,12 @@ suspend fun uploadSpotWithBytes(
         // ✅ INCREMENTA IL CONTATORE TOTALSPOTS DELL'UTENTE
         val userId = auth.currentUser?.uid
         if (userId != null) {
+            // Increment totalSpots, create doc if missing.
             db.collection("users").document(userId)
-                .update("totalSpots", FieldValue.increment(1))
+                .set(
+                    mapOf("totalSpots" to FieldValue.increment(1)),
+                    com.google.firebase.firestore.SetOptions.merge()
+                )
                 .await()
         }
         
