@@ -2,6 +2,7 @@ services:
   backend:
     build:
       context: .
+    restart: always
     ports:
       - "443:443"
     environment:
@@ -19,6 +20,7 @@ services:
   certbot:
     build:
       context: .
+    restart: always
     environment:
       LE_ENABLED: "true"
       LE_EMAIL: "lorenzo.contessa02@gmail.com"

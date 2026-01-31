@@ -363,7 +363,7 @@ suspend fun compressImage(context: Context, uri: Uri): ByteArray? = withContext(
 }
 
 // Compress bitmap to JPEG
-fun compressBitmap(bitmap: Bitmap, maxSize: Int = 1024, quality: Int = 80): ByteArray {
+fun compressBitmap(bitmap: Bitmap, maxSize: Int = 1024, quality: Int = 90): ByteArray {
     val ratio = maxOf(bitmap.width, bitmap.height).toFloat() / maxSize
     val width = (bitmap.width / ratio).toInt()
     val height = (bitmap.height / ratio).toInt()
@@ -460,8 +460,8 @@ suspend fun uploadSpotWithBytes(
     val auth = FirebaseAuth.getInstance()
     try {
         val imagePart = MultipartBody.Part.createFormData("image", "upload.jpg", bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()))
-        RetrofitInstance.api.uploadImage(imagePart)
-        val imageId = "temp_id" // mock
+        val uploadRes = RetrofitInstance.api.uploadImage(imagePart)
+        val imageId = uploadRes.id
         val geohash = GeoFireUtils.getGeoHashForLocation(GeoLocation(latitude, longitude))
         val spotData = hashMapOf(
             "species" to species,

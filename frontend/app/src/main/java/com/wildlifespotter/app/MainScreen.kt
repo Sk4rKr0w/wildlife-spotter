@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,6 +15,7 @@ import androidx.navigation.compose.*
 sealed class Screen(val route: String) {
     object Home : Screen("home_tab")
     object Add : Screen("add_tab")
+    object MySpots : Screen("my_spots_tab")
     object Profile : Screen("profile_tab")
 }
 
@@ -37,6 +39,9 @@ fun MainScreen(
             }
             composable(Screen.Add.route) {
                 AddSpotScreen()
+            }
+            composable(Screen.MySpots.route) {
+                MySpotsScreen()
             }
             composable(Screen.Profile.route) {
                 ProfileScreen(onLogout = onLogout)
@@ -73,6 +78,18 @@ fun BottomBar(navController: NavHostController) {
             },
             icon = { Icon(Icons.Default.AddCircle, null) },
             label = { Text("Add") }
+        )
+
+        NavigationBarItem(
+            selected = currentRoute == Screen.MySpots.route,
+            onClick = {
+                navController.navigate(Screen.MySpots.route) {
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            },
+            icon = { Icon(Icons.Default.List, null) },
+            label = { Text("My Spots") }
         )
 
         NavigationBarItem(
