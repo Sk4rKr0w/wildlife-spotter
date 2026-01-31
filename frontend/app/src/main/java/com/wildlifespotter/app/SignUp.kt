@@ -33,6 +33,7 @@ fun SignUp(
 
     var usernameError by remember { mutableStateOf(false) }
     var emailError by remember { mutableStateOf(false) }
+    var countryError by remember { mutableStateOf(false) }
     var passwordError by remember { mutableStateOf(false) }
 
     Box(
@@ -95,7 +96,15 @@ fun SignUp(
                         onEmailChange = { authViewModel.email = it },
                         error = emailError
                     )
-                    2 -> PasswordStep(
+                    2 -> CountryStep(
+                        country = authViewModel.countryName,
+                        onCountryChange = {
+                            authViewModel.countryName = it
+                            countryError = false
+                        },
+                        error = countryError
+                    )
+                    3 -> PasswordStep(
                         authViewModel.password,
                         authViewModel.confirmPassword,
                         acceptedTerms,
@@ -117,11 +126,12 @@ fun SignUp(
                 DotsIndicator(currentStep = step)
                 Spacer(modifier = Modifier.height(16.dp))
                 PrimaryButton(
-                    text = if (step < 2) "Continue" else "Sign Up",
+                    text = if (step < 3) "Continue" else "Sign Up",
                     enabled = when (step) {
                         0 -> authViewModel.username.isNotBlank() && !usernameError
                         1 -> authViewModel.email.isNotBlank() && authViewModel.email.contains("@") && !emailError
-                        2 -> authViewModel.password.isNotBlank() && authViewModel.confirmPassword.isNotBlank() && authViewModel.password == authViewModel.confirmPassword && acceptedTerms && !passwordError
+                        2 -> authViewModel.countryName.isNotBlank() && !countryError
+                        3 -> authViewModel.password.isNotBlank() && authViewModel.confirmPassword.isNotBlank() && authViewModel.password == authViewModel.confirmPassword && acceptedTerms && !passwordError
                         else -> false
                     },
                     onClick = {
@@ -134,6 +144,14 @@ fun SignUp(
                                 else step++
                             }
                             2 -> {
+                                if (authViewModel.countryName.isBlank() || authViewModel.toAlpha3Country(authViewModel.countryName) == null) {
+                                    countryError = true
+                                } else {
+                                    countryError = false
+                                    step++
+                                }
+                            }
+                            3 -> {
                                 if (authViewModel.password.isBlank() || authViewModel.password != authViewModel.confirmPassword || !acceptedTerms) passwordError = true
                                 else {
                                     // TODO: ASPETTARE IL BACKEND PER COMPLETARE SIGN-UP
@@ -167,6 +185,18 @@ fun EmailStep(
     Title("Insert your email")
     AppTextField(placeholder = "Email", value = email, onValueChange = onEmailChange)
     if (error) Text("Emails must be valid and match", color = Color.Red, style = MaterialTheme.typography.bodySmall)
+}
+
+@Composable
+fun CountryStep(
+    country: String,
+    onCountryChange: (String) -> Unit,
+    error: Boolean
+) {
+    Title("Your country")
+    Description("Insert your country name")
+    AppTextField(placeholder = "Italy", value = country, onValueChange = onCountryChange)
+    if (error) Text("Country not valid", color = Color.Red, style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
@@ -237,7 +267,7 @@ fun AppTextField(placeholder: String, value: String, onValueChange: (String) -> 
 @Composable
 fun DotsIndicator(currentStep: Int) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-        repeat(3) { index ->
+        repeat(4) { index ->
             Box(
                 modifier = Modifier
                     .padding(6.dp)

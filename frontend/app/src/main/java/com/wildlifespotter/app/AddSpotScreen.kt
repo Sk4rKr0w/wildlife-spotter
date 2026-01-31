@@ -333,7 +333,7 @@ suspend fun compressImage(context: Context, uri: Uri): ByteArray? = withContext(
 }
 
 // Compress bitmap to JPEG
-fun compressBitmap(bitmap: Bitmap, maxSize: Int = 1024, quality: Int = 90): ByteArray {
+fun compressBitmap(bitmap: Bitmap, maxSize: Int = 1024, quality: Int = 95): ByteArray {
     val ratio = maxOf(bitmap.width, bitmap.height).toFloat() / maxSize
     val width = (bitmap.width / ratio).toInt()
     val height = (bitmap.height / ratio).toInt()
@@ -408,8 +408,19 @@ suspend fun uploadSpotWithBytes(
         val imagePart = MultipartBody.Part.createFormData("image", "upload.jpg", bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()))
         val uploadRes = RetrofitInstance.api.uploadImage(imagePart)
         val imageId = uploadRes.id
+        val userId = auth.currentUser?.uid
+        val countryCode = if (userId != null) {
+            try {
+                val userDoc = db.collection("users").document(userId).get().await()
+                userDoc.getString("country") ?: "ITA"
+            } catch (e: Exception) {
+                "ITA"
+            }
+        } else {
+            "ITA"
+        }
         val identifyRes = try {
-            RetrofitInstance.api.identifyImage(imageId)
+            RetrofitInstance.api.identifyImage(imageId, countryCode)
         } catch (e: Exception) {
             null
         }
@@ -433,13 +444,11 @@ suspend fun uploadSpotWithBytes(
             "geohash" to geohash,
             "timestamp" to FieldValue.serverTimestamp(),
             "image_id" to imageId,
-            "user_id" to (auth.currentUser?.uid ?: "anonymous"),
+            "user_id" to (userId ?: "anonymous"),
             "sensor_data" to mapOf("steps_count" to steps, "compass_azimuth" to azimuth)
         )
         db.collection("spots").add(spotData).await()
         
-        // ✅ INCREMENTA IL CONTATORE TOTALSPOTS DELL'UTENTE
-        val userId = auth.currentUser?.uid
         if (userId != null) {
             // Increment totalSpots, create doc if missing.
             db.collection("users").document(userId)

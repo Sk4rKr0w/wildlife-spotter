@@ -6,9 +6,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
+import android.content.Context
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import java.util.Locale
 import kotlinx.coroutines.tasks.await
 
 class AuthViewModel : ViewModel() {
@@ -19,11 +24,14 @@ class AuthViewModel : ViewModel() {
     var email by mutableStateOf("")
     var password by mutableStateOf("")
     var confirmPassword by mutableStateOf("")
+    var countryName by mutableStateOf("")
 
     var errorMessage by mutableStateOf<String?>(null)
     var isLoading by mutableStateOf(false)
 
     var user by mutableStateOf<FirebaseUser?>(auth.currentUser)
+    var showGoogleProfileDialog by mutableStateOf(false)
+    private var pendingGoogleUser: FirebaseUser? = null
 
     fun login() {
         if (email.isBlank() || password.isBlank()) return
@@ -44,9 +52,14 @@ class AuthViewModel : ViewModel() {
 
     // ✅ FUNZIONE AGGIORNATA: Crea automaticamente il documento Firestore
     fun register() {
-        if (email.isBlank() || password.isBlank() || confirmPassword.isBlank() || username.isBlank()) return
+        if (email.isBlank() || password.isBlank() || confirmPassword.isBlank() || username.isBlank() || countryName.isBlank()) return
         if (password != confirmPassword) {
             errorMessage = "Password not corresponding"
+            return
+        }
+        val countryCode = toAlpha3Country(countryName)
+        if (countryCode == null) {
+            errorMessage = "Invalid country"
             return
         }
 
@@ -66,8 +79,7 @@ class AuthViewModel : ViewModel() {
                     user?.updateProfile(profileUpdates)
                         ?.addOnCompleteListener { updateTask ->
                             if (updateTask.isSuccessful) {
-                                // ✅ CREA IL DOCUMENTO FIRESTORE
-                                createUserDocument(user!!)
+                                createUserDocument(user!!, username, countryCode)
                             } else {
                                 isLoading = false
                                 errorMessage = "User created, error during saving username"
@@ -81,11 +93,12 @@ class AuthViewModel : ViewModel() {
     }
 
     // ✅ NUOVA FUNZIONE: Crea documento utente in Firestore
-    private fun createUserDocument(firebaseUser: FirebaseUser) {
+    private fun createUserDocument(firebaseUser: FirebaseUser, name: String, countryCode: String) {
         val userData = hashMapOf(
             "uid" to firebaseUser.uid,
             "email" to firebaseUser.email,
-            "username" to username,
+            "username" to name,
+            "country" to countryCode,
             "photoURL" to firebaseUser.photoUrl?.toString(),
             "createdAt" to FieldValue.serverTimestamp(),
             "updatedAt" to FieldValue.serverTimestamp(),
@@ -109,8 +122,94 @@ class AuthViewModel : ViewModel() {
             }
     }
 
-    fun logout() {
+    fun loginWithGoogle(idToken: String) {
+        isLoading = true
+        errorMessage = null
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        auth.signInWithCredential(credential)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val firebaseUser = auth.currentUser
+                    if (firebaseUser == null) {
+                        isLoading = false
+                        errorMessage = "Google sign-in failed"
+                        return@addOnCompleteListener
+                    }
+                    db.collection("users")
+                        .document(firebaseUser.uid)
+                        .get()
+                        .addOnSuccessListener { doc ->
+                            isLoading = false
+                            if (doc.exists()) {
+                                user = firebaseUser
+                            } else {
+                                pendingGoogleUser = firebaseUser
+                                showGoogleProfileDialog = true
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            isLoading = false
+                            errorMessage = e.message ?: "Error during login"
+                        }
+                } else {
+                    isLoading = false
+                    errorMessage = task.exception?.message ?: "Error during login"
+                }
+            }
+    }
+
+    fun completeGoogleProfile(name: String, countryInput: String) {
+        val firebaseUser = pendingGoogleUser ?: return
+        if (name.isBlank()) {
+            errorMessage = "Username cannot be empty"
+            return
+        }
+        val countryCode = toAlpha3Country(countryInput)
+        if (countryCode == null) {
+            errorMessage = "Invalid country"
+            return
+        }
+        isLoading = true
+        errorMessage = null
+        val profileUpdates = UserProfileChangeRequest.Builder()
+            .setDisplayName(name)
+            .build()
+        firebaseUser.updateProfile(profileUpdates)
+            ?.addOnCompleteListener { updateTask ->
+                if (updateTask.isSuccessful) {
+                    createUserDocument(firebaseUser, name, countryCode)
+                    user = firebaseUser
+                    pendingGoogleUser = null
+                    showGoogleProfileDialog = false
+                } else {
+                    isLoading = false
+                    errorMessage = "User created, error during saving username"
+                }
+            }
+    }
+
+    fun toAlpha3Country(country: String): String? {
+        val input = country.trim()
+        if (input.isEmpty()) return null
+        for (code in Locale.getISOCountries()) {
+            val locale = Locale("", code)
+            val nameEn = locale.getDisplayCountry(Locale.ENGLISH)
+            val nameLocal = locale.displayCountry
+            if (nameEn.equals(input, ignoreCase = true) || nameLocal.equals(input, ignoreCase = true)) {
+                return try {
+                    locale.isO3Country
+                } catch (e: Exception) {
+                    null
+                }
+            }
+        }
+        return null
+    }
+
+    fun logout(context: Context) {
         auth.signOut()
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
+        GoogleSignIn.getClient(context, gso).signOut()
         user = null
     }
 }

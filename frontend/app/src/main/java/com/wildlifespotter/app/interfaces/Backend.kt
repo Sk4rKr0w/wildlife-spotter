@@ -29,8 +29,7 @@ interface BackendApi {
     @GET("images/{id}/identify")
     suspend fun identifyImage(
         @Path("id") id: String,
-        @Query("country") country: String? = null,
-        @Query("threshold") threshold: Double? = null
+        @Query("country") country: String? = null
     ): IdentifyResponse
 }
 
