@@ -9,8 +9,10 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
+import com.wildlifespotter.app.ui.components.AnimatedWaveBackground
 
 sealed class Screen(val route: String) {
     object Home : Screen("home_tab")
@@ -41,10 +43,22 @@ fun MainScreen(
                 AddSpotScreen()
             }
             composable(Screen.MySpots.route) {
-                MySpotsScreen()
-            }
+                MySpotsScreen(
+                    onNavigateToSpotDetail = { spotId ->
+                        navController.navigate("spot_detail/$spotId")
+                    }
+                )            }
             composable(Screen.Profile.route) {
                 ProfileScreen(onLogout = onLogout)
+            }
+            composable("spot_detail/{spotId}") { backStackEntry ->
+                val spotId = backStackEntry.arguments?.getString("spotId") ?: return@composable
+
+                SpotDetailScreen(
+                    spotId = spotId,
+                    onNavigateBack = { navController.popBackStack() },
+                    onSpotDeleted = { navController.popBackStack() }
+                )
             }
         }
     }

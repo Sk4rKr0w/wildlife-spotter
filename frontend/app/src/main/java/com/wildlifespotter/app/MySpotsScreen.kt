@@ -1,6 +1,7 @@
 package com.wildlifespotter.app
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,6 +56,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 import com.wildlifespotter.app.interfaces.RetrofitInstance
+import com.wildlifespotter.app.ui.components.AnimatedWaveBackground
 
 data class UserSpot(
     val id: String,
@@ -67,7 +70,9 @@ data class UserSpot(
 )
 
 @Composable
-fun MySpotsScreen() {
+fun MySpotsScreen(
+    onNavigateToSpotDetail: (String) -> Unit = {}
+) {
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
     val scope = rememberCoroutineScope()
@@ -124,12 +129,21 @@ fun MySpotsScreen() {
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
+
+        AnimatedWaveBackground(
+            primaryColor = Color(0xFF4CAF50),
+            secondaryColor = Color(0xFF2EA333)
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
+
+
+
             Text(
                 text = "My Spots",
                 style = MaterialTheme.typography.titleLarge,
@@ -167,6 +181,7 @@ fun MySpotsScreen() {
                         items(spots, key = { it.id }) { spot ->
                             SwipeToDeleteSpot(
                                 spot = spot,
+                                onClick = { onNavigateToSpotDetail(spot.id) },
                                 resetToken = resetTokens[spot.id] ?: 0,
                                 onEdit = {
                                     editingSpot = spot
@@ -273,6 +288,7 @@ fun MySpotsScreen() {
 fun SwipeToDeleteSpot(
     spot: UserSpot,
     resetToken: Int,
+    onClick: () -> Unit = {},
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -322,17 +338,21 @@ fun SwipeToDeleteSpot(
                 }
             }
         ) {
-            SpotCard(spot)
+            SpotCard(spot = spot, onClick = onClick)
         }
     }
 }
 
 @Composable
-fun SpotCard(spot: UserSpot) {
+fun SpotCard(
+    spot: UserSpot,
+    onClick: () -> Unit = {}
+) {
     val formatter = remember { SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()) }
     val dateText = spot.timestamp?.toDate()?.let { formatter.format(it) } ?: "Unknown date"
 
     Card(
+        modifier = Modifier.clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )

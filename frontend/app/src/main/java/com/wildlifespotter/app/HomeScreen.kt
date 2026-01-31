@@ -151,10 +151,10 @@ fun HomeScreen() {
             primaryColor = Color(0xFF4CAF50),
             secondaryColor = Color(0xFF2EA333)
         )
-        
+
         // Particelle fluttuanti
         FloatingParticles(particleCount = 15)
-        
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -163,7 +163,7 @@ fun HomeScreen() {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(20.dp))
-            
+
             // Title
             Text(
                 text = "Activity Dashboard",
@@ -172,9 +172,9 @@ fun HomeScreen() {
                 color = Color(0xFF2E7D32),
                 modifier = Modifier.padding(vertical = 16.dp)
             )
-            
+
             Spacer(modifier = Modifier.height(20.dp))
-            
+
             // StepCounter Card
             Card(
                 modifier = Modifier
@@ -209,7 +209,7 @@ fun HomeScreen() {
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        
+
                         IconButton(
                             onClick = {
                                 previousTotalSteps = totalSteps
@@ -224,25 +224,25 @@ fun HomeScreen() {
                             )
                         }
                     }
-                    
+
                     Spacer(Modifier.height(24.dp))
-                    
+
                     // Indicatore circolare animato
                     CircularStepIndicator(
                         currentSteps = currentSteps,
                         goalSteps = 10000,
-                        size = 220f
+                        size = 150f
                     )
-                    
+
                     Spacer(Modifier.height(16.dp))
-                    
+
                     // Grafico a onde
                     WaveActivityGraph()
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // Card bussola con canvas animato
             Card(
                 modifier = Modifier
@@ -275,14 +275,14 @@ fun HomeScreen() {
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    
+
                     Spacer(Modifier.height(24.dp))
-                    
+
                     // Bussola animata
                     AnimatedCompass(azimuth = azimuth, size = 200f)
-                    
+
                     Spacer(Modifier.height(20.dp))
-                    
+
                     // Info direzione
                     Row(
                         modifier = Modifier
@@ -305,7 +305,7 @@ fun HomeScreen() {
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        
+
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 "Azimuth",
@@ -322,9 +322,9 @@ fun HomeScreen() {
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // Card posizione
             Card(
                 modifier = Modifier
@@ -356,9 +356,9 @@ fun HomeScreen() {
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    
+
                     Spacer(Modifier.height(20.dp))
-                    
+
                     // Indirizzo
                     Row(
                         modifier = Modifier
@@ -380,9 +380,9 @@ fun HomeScreen() {
                             fontSize = 16.sp
                         )
                     }
-                    
+
                     Spacer(Modifier.height(12.dp))
-                    
+
                     // Coordinate
                     Row(
                         modifier = Modifier
@@ -405,7 +405,7 @@ fun HomeScreen() {
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        
+
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 "Longitude",
@@ -422,7 +422,7 @@ fun HomeScreen() {
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(40.dp))
         }
     }

@@ -117,7 +117,7 @@ private data class Particle(
 fun AnimatedCompass(
     azimuth: Float,
     modifier: Modifier = Modifier,
-    size: Float = 200f
+    size: Float = 175f
 ) {
     val animatedAzimuth by animateFloatAsState(
         targetValue = azimuth,
@@ -228,7 +228,7 @@ fun CircularStepIndicator(
     val animatedProgress by animateFloatAsState(
         targetValue = progress,
         animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
-        label = "progress"
+        label = "Progress"
     )
     
     Canvas(modifier = modifier.size(size.dp)) {
@@ -275,11 +275,11 @@ fun CircularStepIndicator(
                 textPaint
             )
             
-            textPaint.textSize = 24f
+            textPaint.textSize = 30f
             textPaint.color = android.graphics.Color.LTGRAY
             
             drawText(
-                "steps",
+                "Steps",
                 center.x,
                 center.y + 40f,
                 textPaint
@@ -348,88 +348,3 @@ fun WaveActivityGraph(
     }
 }
 
-@Composable
-fun GeometricParallaxBackground(
-    modifier: Modifier = Modifier,
-    scrollOffset: Float = 0f
-) {
-    Canvas(modifier = modifier.fillMaxSize()) {
-        val width = size.width
-        val height = size.height
-        
-        // Triangoli grandi sullo sfondo
-        for (i in 0..3) {
-            val offsetY = (scrollOffset * 0.3f * i) % height
-            val triangle = Path().apply {
-                moveTo(width * (i * 0.3f), offsetY)
-                lineTo(width * (i * 0.3f + 0.2f), offsetY + 200f)
-                lineTo(width * (i * 0.3f - 0.1f), offsetY + 200f)
-                close()
-            }
-            
-            drawPath(
-                path = triangle,
-                color = Color.White.copy(alpha = 0.05f)
-            )
-        }
-        
-        // Cerchi piccoli
-        for (i in 0..5) {
-            val offsetY = (scrollOffset * 0.5f * i) % height
-            drawCircle(
-                color = Color(0xFF4CAF50).copy(alpha = 0.1f),
-                radius = 30f + (i * 10f),
-                center = Offset(width * (i * 0.2f), offsetY)
-            )
-        }
-    }
-}
-
-@Composable
-fun GradientBorderCard(
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    var rotation by remember { mutableFloatStateOf(0f) }
-    
-    LaunchedEffect(Unit) {
-        while (true) {
-            withFrameNanos {
-                rotation += 0.5f
-                if (rotation >= 360f) rotation = 0f
-            }
-        }
-    }
-    
-    Box(modifier = modifier) {
-        Canvas(
-            modifier = Modifier.matchParentSize()
-        ) {
-            val gradient = Brush.sweepGradient(
-                colors = listOf(
-                    Color(0xFF4CAF50),
-                    Color(0xFF2EA333),
-                    Color(0xFFFFC107),
-                    Color(0xFF4CAF50)
-                ),
-                center = Offset(size.width / 2, size.height / 2)
-            )
-            
-            rotate(rotation) {
-                drawRoundRect(
-                    brush = gradient,
-                    size = size,
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx())
-                )
-            }
-        }
-        
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .padding(3.dp)
-        ) {
-            content()
-        }
-    }
-}

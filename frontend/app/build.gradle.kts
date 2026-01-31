@@ -55,8 +55,9 @@ dependencies {
     implementation ("com.google.accompanist:accompanist-pager-indicators:0.30.1")
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.material3)
-    implementation("androidx.navigation:navigation-compose:2.7.3")
-
+    implementation("androidx.navigation:navigation-compose:2.7.5")
+    implementation ("com.google.maps.android:maps-compose:4.3.3")
+    implementation ("com.google.android.gms:play-services-maps:18.2.0")
     implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
