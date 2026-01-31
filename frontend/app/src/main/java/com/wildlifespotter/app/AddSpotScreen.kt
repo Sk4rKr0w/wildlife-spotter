@@ -47,6 +47,7 @@ import com.google.android.gms.location.Priority
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.wildlifespotter.app.interfaces.IdentifyTaxonomy
 import com.wildlifespotter.app.interfaces.RetrofitInstance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -82,10 +83,8 @@ fun AddSpotScreen() {
     // ---------- Stati UI ----------
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var compressedImage by remember { mutableStateOf<ByteArray?>(null) }
-    var speciesName by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    var isAnalyzingImage by remember { mutableStateOf(false) }
 
     // ---------- Location ----------
     var locationName by remember { mutableStateOf("Getting location...") }
@@ -161,11 +160,6 @@ fun AddSpotScreen() {
                             longitude = lng
                             locationName = name
                         }
-                        isAnalyzingImage = true
-                        identifyAnimalFromBytes(compressed) { species ->
-                            speciesName = species
-                            isAnalyzingImage = false
-                        }
                     }
                 }
             }
@@ -184,11 +178,6 @@ fun AddSpotScreen() {
                         latitude = lat
                         longitude = lng
                         locationName = name
-                    }
-                    isAnalyzingImage = true
-                    identifyAnimalFromBytes(compressed) { species ->
-                        speciesName = species
-                        isAnalyzingImage = false
                     }
                 }
             }
@@ -268,24 +257,10 @@ fun AddSpotScreen() {
                         }
                     }
 
-                    if (isAnalyzingImage) {
-                        Box(
-                            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(color = Color(0xFF4CAF50))
-                        }
-                    }
                 }
             }
 
             Spacer(Modifier.height(16.dp))
-
-            // ---------- Species ----------
-            if (speciesName.isNotEmpty()) {
-                Text("Identified: $speciesName", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Spacer(Modifier.height(8.dp))
-            }
 
             // ---------- Description ----------
             OutlinedTextField(
@@ -313,19 +288,14 @@ fun AddSpotScreen() {
                             Toast.makeText(context, "Select image", Toast.LENGTH_SHORT).show()
                             return@launch
                         }
-                        if (speciesName.isEmpty()) {
-                            Toast.makeText(context, "Species not identified", Toast.LENGTH_SHORT).show()
-                            return@launch
-                        }
                         isLoading = true
                         uploadSpotWithBytes(
-                            context, compressedImage!!, speciesName, description,
+                            context, compressedImage!!, "", description,
                             latitude, longitude, locationName, currentSteps, currentAzimuth
                         ) { success, msg ->
                             isLoading = false
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                             if (success) {
-                                speciesName = ""
                                 description = ""
                                 compressedImage = null
                                 selectedImageUri = null
@@ -334,7 +304,7 @@ fun AddSpotScreen() {
                         }
                     }
                 },
-                enabled = !isLoading && compressedImage != null && speciesName.isNotEmpty(),
+                enabled = !isLoading && compressedImage != null,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (isLoading) CircularProgressIndicator(color = Color.White)
@@ -419,30 +389,6 @@ suspend fun reverseGeocode(context: Context, lat: Double, lng: Double): String? 
     }
 }
 
-// Identify animal from byte array
-suspend fun identifyAnimalFromBytes(bytes: ByteArray, onResult: (String) -> Unit) = withContext(Dispatchers.IO) {
-    try {
-        val client = okhttp3.OkHttpClient()
-        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart("image", "photo.jpg", bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()))
-            .build()
-        val req = okhttp3.Request.Builder().url("https://api.inaturalist.org/v1/computervision/score_image").post(body).build()
-        val res = client.newCall(req).execute()
-        val species = if (res.isSuccessful) {
-            val json = org.json.JSONObject(res.body?.string() ?: "{}")
-            val results = json.optJSONArray("results")
-            if (results != null && results.length() > 0) {
-                val taxon = results.getJSONObject(0).getJSONObject("taxon")
-                taxon.optString("preferred_common_name", taxon.optString("name", "Unknown Species"))
-            } else "Unknown Species"
-        } else "Unknown Species"
-        onResult(species)
-    } catch (e: Exception) {
-        e.printStackTrace()
-        onResult("Unknown Species")
-    }
-}
-
 // Upload spot from bytes
 suspend fun uploadSpotWithBytes(
     context: Context,
@@ -462,9 +408,24 @@ suspend fun uploadSpotWithBytes(
         val imagePart = MultipartBody.Part.createFormData("image", "upload.jpg", bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()))
         val uploadRes = RetrofitInstance.api.uploadImage(imagePart)
         val imageId = uploadRes.id
+        val identifyRes = try {
+            RetrofitInstance.api.identifyImage(imageId)
+        } catch (e: Exception) {
+            null
+        }
+        val annotation = identifyRes?.annotations?.firstOrNull()
+        val fallbackSpecies = species.ifBlank { "Unknown Species" }
+        val label = annotation?.label?.takeIf { it.isNotBlank() } ?: fallbackSpecies
+        val taxonomy = annotation?.taxonomy
+        if (annotation?.label?.isNotBlank() == true) {
+            onComplete(true, "Species identified: ${annotation.label}")
+        }
         val geohash = GeoFireUtils.getGeoHashForLocation(GeoLocation(latitude, longitude))
         val spotData = hashMapOf(
-            "species" to species,
+            "species" to mapOf(
+                "label" to label,
+                "taxonomy" to taxonomyToMap(taxonomy)
+            ),
             "description" to description,
             "latitude" to latitude,
             "longitude" to longitude,
@@ -494,4 +455,16 @@ suspend fun uploadSpotWithBytes(
         e.printStackTrace()
         onComplete(false, "Error: ${e.message}")
     }
+}
+
+fun taxonomyToMap(taxonomy: IdentifyTaxonomy?): Map<String, Any?> {
+    if (taxonomy == null) return emptyMap()
+    return mapOf(
+        "id" to taxonomy.id,
+        "class" to taxonomy.className,
+        "order" to taxonomy.order,
+        "family" to taxonomy.family,
+        "genus" to taxonomy.genus,
+        "species" to taxonomy.species
+    )
 }

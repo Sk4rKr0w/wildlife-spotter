@@ -57,7 +57,8 @@ import com.wildlifespotter.app.interfaces.RetrofitInstance
 
 data class UserSpot(
     val id: String,
-    val species: String,
+    val speciesLabel: String,
+    val speciesTaxonomy: Map<String, Any?>,
     val description: String,
     val locationName: String,
     val imageId: String,
@@ -93,9 +94,20 @@ fun MySpotsScreen() {
                 .await()
 
             spots = snapshot.documents.map { doc ->
+                val speciesRaw = doc.get("species")
+                val speciesLabel = when (speciesRaw) {
+                    is String -> speciesRaw
+                    is Map<*, *> -> (speciesRaw["label"] as? String) ?: "Unknown species"
+                    else -> "Unknown species"
+                }
+                val taxonomyRaw = when (speciesRaw) {
+                    is Map<*, *> -> (speciesRaw["taxonomy"] as? Map<String, Any?>) ?: emptyMap()
+                    else -> emptyMap()
+                }
                 UserSpot(
                     id = doc.id,
-                    species = doc.getString("species") ?: "Unknown species",
+                    speciesLabel = speciesLabel,
+                    speciesTaxonomy = taxonomyRaw,
                     description = doc.getString("description") ?: "",
                     locationName = doc.getString("location_name") ?: "Unknown location",
                     imageId = doc.getString("image_id") ?: "",
@@ -181,7 +193,10 @@ fun MySpotsScreen() {
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
                                             val restoreData = hashMapOf(
-                                                "species" to removedSpot.species,
+                                                "species" to mapOf(
+                                                    "label" to removedSpot.speciesLabel,
+                                                    "taxonomy" to removedSpot.speciesTaxonomy
+                                                ),
                                                 "description" to removedSpot.description,
                                                 "location_name" to removedSpot.locationName,
                                                 "image_id" to removedSpot.imageId,
@@ -337,7 +352,7 @@ fun SpotCard(spot: UserSpot) {
                 )
             }
             Text(
-                text = spot.species,
+                text = spot.speciesLabel,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )

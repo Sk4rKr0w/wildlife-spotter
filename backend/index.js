@@ -9,6 +9,7 @@ const Database = require("better-sqlite3");
 const checkAuth = require("./middleware/auth");
 
 const app = express();
+app.use(express.json({ limit: "1mb" }));
 const PORT = process.env.PORT || 443;
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
@@ -122,6 +123,72 @@ app.get("/images/:id", (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch image" });
+  }
+});
+
+app.get("/images/:id/identify", checkAuth, async (req, res) => {
+  try {
+    const apiKey = process.env.ANIMALDETECT_API_KEY;
+    const apiUrl = "https://www.animaldetect.com/api/v1/detect";
+
+    if (!apiKey) {
+      res.status(500).json({ error: "Missing ANIMALDETECT_API_KEY" });
+      return;
+    }
+
+    const { id } = req.params;
+    const db = req.app.locals.db;
+    const row = db
+      .prepare("SELECT filename, mime FROM images WHERE id = ?")
+      .get(id);
+
+    if (!row) {
+      res.status(404).json({ error: "Image not found" });
+      return;
+    }
+
+    const filePath = path.join(UPLOADS_DIR, row.filename);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "Image file missing" });
+      return;
+    }
+
+    const buffer = await fs.promises.readFile(filePath);
+    const formData = new FormData();
+    const blob = new Blob([buffer], {
+      type: row.mime || "application/octet-stream",
+    });
+    formData.append("image", blob, row.filename);
+
+    if (req.body?.country) {
+      formData.append("country", String(req.body.country));
+    }
+    if (req.body?.threshold) {
+      formData.append("threshold", String(req.body.threshold));
+    }
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      res.status(response.status).json({ error: "Detect failed", details: text });
+      return;
+    }
+
+    try {
+      res.json(JSON.parse(text));
+    } catch {
+      res.status(502).json({ error: "Invalid response", details: text });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to identify image" });
   }
 });
 
