@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wildlifespotter.app.R
 import com.wildlifespotter.app.models.AuthViewModel
+import java.util.Locale
 
 @Composable
 fun SignUp(
@@ -188,6 +189,7 @@ fun EmailStep(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun CountryStep(
     country: String,
     onCountryChange: (String) -> Unit,
@@ -195,7 +197,52 @@ fun CountryStep(
 ) {
     Title("Your country")
     Description("Insert your country name")
-    AppTextField(placeholder = "Italy", value = country, onValueChange = onCountryChange)
+    val countries = remember {
+        Locale.getISOCountries()
+            .map { code -> Locale("", code).displayCountry }
+            .distinct()
+            .sorted()
+    }
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        TextField(
+            value = country,
+            onValueChange = { },
+            readOnly = true,
+            placeholder = { Text("Italy", color = Color.White.copy(alpha = 0.6f)) },
+            modifier = Modifier.fillMaxWidth().padding(top = 24.dp).menuAnchor(),
+            singleLine = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = Color.White,
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.White,
+                unfocusedIndicatorColor = Color.White.copy(alpha = 0.5f),
+                focusedPlaceholderColor = Color.White.copy(alpha = 0.6f),
+                unfocusedPlaceholderColor = Color.White.copy(alpha = 0.6f)
+            )
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            countries.forEach { item ->
+                DropdownMenuItem(
+                    text = { Text(item) },
+                    onClick = {
+                        onCountryChange(item)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
     if (error) Text("Country not valid", color = Color.Red, style = MaterialTheme.typography.bodySmall)
 }
 

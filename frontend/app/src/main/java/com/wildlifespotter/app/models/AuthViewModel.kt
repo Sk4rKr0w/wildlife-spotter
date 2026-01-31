@@ -1,6 +1,7 @@
 package com.wildlifespotter.app.models
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -14,6 +15,7 @@ import android.content.Context
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import java.util.Locale
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 class AuthViewModel : ViewModel() {
@@ -44,6 +46,11 @@ class AuthViewModel : ViewModel() {
                 isLoading = false
                 if (task.isSuccessful) {
                     user = auth.currentUser
+                    user?.let { firebaseUser ->
+                        viewModelScope.launch {
+                            syncUserEmail(firebaseUser)
+                        }
+                    }
                 } else {
                     errorMessage = task.exception?.message ?: "Error during login"
                 }
@@ -142,6 +149,9 @@ class AuthViewModel : ViewModel() {
                             isLoading = false
                             if (doc.exists()) {
                                 user = firebaseUser
+                                viewModelScope.launch {
+                                    syncUserEmail(firebaseUser)
+                                }
                             } else {
                                 pendingGoogleUser = firebaseUser
                                 showGoogleProfileDialog = true
@@ -181,11 +191,36 @@ class AuthViewModel : ViewModel() {
                     user = firebaseUser
                     pendingGoogleUser = null
                     showGoogleProfileDialog = false
+                    viewModelScope.launch {
+                        syncUserEmail(firebaseUser)
+                    }
                 } else {
                     isLoading = false
                     errorMessage = "User created, error during saving username"
                 }
             }
+    }
+
+    private suspend fun syncUserEmail(firebaseUser: FirebaseUser) {
+        try {
+            firebaseUser.reload().await()
+            val authEmail = firebaseUser.email ?: return
+            val doc = db.collection("users").document(firebaseUser.uid).get().await()
+            val dbEmail = doc.getString("email")
+            val pendingEmail = doc.getString("pendingEmail")
+            if (authEmail != dbEmail || pendingEmail == authEmail) {
+                val data = hashMapOf(
+                    "email" to authEmail,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                data["pendingEmail"] = ""
+                db.collection("users")
+                    .document(firebaseUser.uid)
+                    .set(data, com.google.firebase.firestore.SetOptions.merge())
+                    .await()
+            }
+        } catch (_: Exception) {
+        }
     }
 
     fun toAlpha3Country(country: String): String? {

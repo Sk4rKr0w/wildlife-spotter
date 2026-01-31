@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -25,18 +26,26 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Context
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
+import com.wildlifespotter.app.models.AuthViewModel
 import com.wildlifespotter.app.ui.components.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(onLogout: () -> Unit) {
+    val context = LocalContext.current
+    val authViewModel: AuthViewModel = viewModel()
 
     /* ---------------- Firebase ---------------- */
     val auth = FirebaseAuth.getInstance()
@@ -50,6 +59,8 @@ fun ProfileScreen(onLogout: () -> Unit) {
     /* ---------------- UI State ---------------- */
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var originalEmail by remember { mutableStateOf("") }
+    var originalUsername by remember { mutableStateOf("") }
 
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
@@ -71,6 +82,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
     val primary = Color(0xFF4CAF50)
     val accent = Color(0xFFFFC107)
     val error = Color(0xFFE53935)
+    val supportsPassword = user?.providerData?.any { it.providerId == "password" } == true
 
     /* ---------------- Load User ---------------- */
     LaunchedEffect(Unit) {
@@ -93,6 +105,8 @@ fun ProfileScreen(onLogout: () -> Unit) {
                 email = firebaseUser.email ?: ""
             }
         }
+        originalEmail = email
+        originalUsername = username
         isLoadingProfile = false
     }
 
@@ -156,7 +170,18 @@ fun ProfileScreen(onLogout: () -> Unit) {
             ) {
                 Column(Modifier.padding(24.dp)) {
 
-                    Header(isEditMode) { isEditMode = !isEditMode }
+                    Header(isEditMode) {
+                        isEditMode = !isEditMode
+                        if (!isEditMode) {
+                            username = originalUsername
+                            email = originalEmail
+                            currentPassword = ""
+                            newPassword = ""
+                            confirmPassword = ""
+                            showPasswordFields = false
+                            message = ""
+                        }
+                    }
 
                     Spacer(Modifier.height(24.dp))
 
@@ -176,12 +201,20 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         onChange = { email = it },
                         label = "Email",
                         icon = Icons.Default.Email,
-                        enabled = isEditMode,
+                        enabled = isEditMode && supportsPassword,
                         keyboardType = KeyboardType.Email,
                         primary = primary
                     )
+                    if (isEditMode && !supportsPassword) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Email and password change not available for Google accounts",
+                            color = error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
 
-                    if (isEditMode) {
+                    if (isEditMode && supportsPassword) {
                         Spacer(Modifier.height(8.dp))
                         TextButton(onClick = { showPasswordFields = !showPasswordFields }) {
                             Icon(Icons.Default.Lock, null, tint = accent)
@@ -194,7 +227,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         }
                     }
 
-                    if (isEditMode && showPasswordFields) {
+                    if (isEditMode && supportsPassword && email != originalEmail) {
                         PasswordField(
                             "Current Password",
                             currentPassword,
@@ -203,7 +236,13 @@ fun ProfileScreen(onLogout: () -> Unit) {
                             { passwordVisible = !passwordVisible },
                             primary
                         )
+                    }
 
+                    if (isEditMode && showPasswordFields) {
+                        if (!supportsPassword) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("Password change not available for Google accounts", color = error)
+                        }
                         PasswordField(
                             "New Password",
                             newPassword,
@@ -233,10 +272,14 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         Spacer(Modifier.height(24.dp))
                         SaveButton(
                             isLoading = isLoading,
-                            primary = primary
+                            primary = primary,
+                            enabled = (username != originalUsername) ||
+                                (email != originalEmail) ||
+                                (showPasswordFields && (currentPassword.isNotBlank() || newPassword.isNotBlank() || confirmPassword.isNotBlank()))
                         ) {
                             scope.launch {
                                 saveProfile(
+                                    context,
                                     user,
                                     db,
                                     username,
@@ -245,11 +288,18 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                     currentPassword,
                                     newPassword,
                                     confirmPassword,
-                                    onSuccess = {
-                                        message = "Profile updated successfully!"
+                                    onSuccess = { msg, shouldLogout ->
+                                        message = msg
                                         messageType = MessageType.SUCCESS
                                         isEditMode = false
                                         showPasswordFields = false
+                                        currentPassword = ""
+                                        newPassword = ""
+                                        confirmPassword = ""
+                                        if (shouldLogout) {
+                                            authViewModel.logout(context)
+                                            onLogout()
+                                        }
                                     },
                                     onError = {
                                         message = it
@@ -357,6 +407,7 @@ fun AnimatedProfileAvatar(
 /* ---------------- Helpers ---------------- */
 
 suspend fun saveProfile(
+    context: Context,
     user: com.google.firebase.auth.FirebaseUser?,
     db: FirebaseFirestore,
     username: String,
@@ -365,7 +416,7 @@ suspend fun saveProfile(
     currentPassword: String,
     newPassword: String,
     confirmPassword: String,
-    onSuccess: () -> Unit,
+    onSuccess: (String, Boolean) -> Unit,
     onError: (String) -> Unit,
     setLoading: (Boolean) -> Unit
 ) {
@@ -373,43 +424,107 @@ suspend fun saveProfile(
     try {
         setLoading(true)
 
+        val needsReauth = changePassword || email != user.email
+        if (needsReauth) {
+            val supportsPassword = user.providerData.any { it.providerId == "password" }
+            if (supportsPassword) {
+                if (currentPassword.isBlank()) {
+                    onError("Current password required to update email or password")
+                    return
+                }
+                val credential = EmailAuthProvider.getCredential(
+                    user.email ?: "", currentPassword
+                )
+                user.reauthenticate(credential).await()
+            } else {
+                val resId = context.resources.getIdentifier(
+                    "default_web_client_id",
+                    "string",
+                    context.packageName
+                )
+                if (resId == 0) {
+                    onError("Missing default_web_client_id")
+                    return
+                }
+                val webClientId = context.getString(resId)
+                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestIdToken(webClientId)
+                    .requestEmail()
+                    .build()
+                val client = GoogleSignIn.getClient(context, gso)
+                val account = try {
+                    client.silentSignIn().await()
+                } catch (e: Exception) {
+                    null
+                }
+                val idToken = account?.idToken
+                if (idToken.isNullOrBlank()) {
+                    onError("Re-authentication required. Please sign in again.")
+                    return
+                }
+                val credential = GoogleAuthProvider.getCredential(idToken, null)
+                user.reauthenticate(credential).await()
+            }
+        }
+
         if (changePassword) {
             if (newPassword != confirmPassword) {
                 onError("Passwords don't match")
                 return
             }
-            val credential = EmailAuthProvider.getCredential(
-                user.email ?: "", currentPassword
-            )
-            user.reauthenticate(credential).await()
             user.updatePassword(newPassword).await()
         }
 
-        if (email != user.email) {
-            user.updateEmail(email).await()
+        val emailChanged = email != user.email
+        val supportsPassword = user.providerData.any { it.providerId == "password" }
+        if (emailChanged && !supportsPassword) {
+            onError("Email change not available for Google accounts")
+            return
+        }
+        if (emailChanged) {
+            user.verifyBeforeUpdateEmail(email).await()
         }
 
-        if (username != user.displayName) {
+        val usernameChanged = username != user.displayName
+        if (usernameChanged) {
+            val existing = db.collection("users")
+                .whereEqualTo("username", username)
+                .get()
+                .await()
+            val conflict = existing.documents.any { it.id != user.uid }
+            if (conflict) {
+                onError("Username already taken")
+                return
+            }
             val profileUpdates = UserProfileChangeRequest.Builder()
                 .setDisplayName(username)
                 .build()
             user.updateProfile(profileUpdates).await()
         }
 
+        val data = hashMapOf(
+            "username" to username,
+            "uid" to user.uid,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        if (!emailChanged) {
+            data["email"] = email
+            data.remove("pendingEmail")
+        } else {
+            data["pendingEmail"] = email
+        }
+
         db.collection("users")
             .document(user.uid)
-            .set(
-                mapOf(
-                    "username" to username,
-                    "email" to email,
-                    "uid" to user.uid,
-                    "updatedAt" to FieldValue.serverTimestamp()
-                ),
-                com.google.firebase.firestore.SetOptions.merge()
-            )
+            .set(data, com.google.firebase.firestore.SetOptions.merge())
             .await()
 
-        onSuccess()
+        val shouldLogout = emailChanged || changePassword
+        if (emailChanged) {
+            onSuccess("Verification email sent. Check your inbox to update the email.", shouldLogout)
+        } else {
+            onSuccess("Profile updated successfully!", shouldLogout)
+        }
     } catch (e: Exception) {
         onError(e.message ?: "Unknown error")
     } finally {
@@ -531,10 +646,10 @@ fun PasswordField(
 }
 
 @Composable
-fun SaveButton(isLoading: Boolean, primary: Color, onClick: () -> Unit) {
+fun SaveButton(isLoading: Boolean, primary: Color, enabled: Boolean, onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        enabled = !isLoading,
+        enabled = !isLoading && enabled,
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),

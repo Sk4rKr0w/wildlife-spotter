@@ -217,7 +217,7 @@ fun SignIn(
             Spacer(modifier = Modifier.height(24.dp))
 
             // GOOGLE SIGN IN
-            Button(
+            OutlinedButton(
                 onClick = {
                     val resId = context.resources.getIdentifier(
                         "default_web_client_id",
@@ -226,7 +226,7 @@ fun SignIn(
                     )
                     if (resId == 0) {
                         authViewModel.errorMessage = "Missing default_web_client_id"
-                        return@Button
+                        return@OutlinedButton
                     }
                     val webClientId = context.getString(resId)
                     val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -238,8 +238,23 @@ fun SignIn(
                         googleLauncher.launch(client.signInIntent)
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                ),
+                border = ButtonDefaults.outlinedButtonBorder.copy(
+                    brush = Brush.linearGradient(listOf(Color(0xFFDDDDDD), Color(0xFFDDDDDD)))
+                )
             ) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_google),
+                    contentDescription = "Google",
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text("Sign in with Google")
             }
 
