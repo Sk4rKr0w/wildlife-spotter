@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -22,8 +23,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wildlifespotter.app.models.AuthViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import java.util.Locale
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun SignIn(
     authViewModel: AuthViewModel = viewModel(),
     onSignInClick: () -> Unit = {},
@@ -34,6 +42,28 @@ fun SignIn(
     var passwordVisible by remember { mutableStateOf(false) }
     var emailError by remember { mutableStateOf(false) }
     var passwordError by remember { mutableStateOf(false) }
+    var googleUsername by remember { mutableStateOf("") }
+    var googleCountry by remember { mutableStateOf("") }
+    var googleCountryError by remember { mutableStateOf(false) }
+    var countryExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    val googleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            val idToken = account.idToken
+            if (idToken != null) {
+                authViewModel.loginWithGoogle(idToken)
+            } else {
+                authViewModel.errorMessage = "Missing Google token"
+            }
+        } catch (e: Exception) {
+            authViewModel.errorMessage = e.message ?: "Google sign-in failed"
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -186,6 +216,45 @@ fun SignIn(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // GOOGLE SIGN IN
+            Button(
+                onClick = {
+                    val resId = context.resources.getIdentifier(
+                        "default_web_client_id",
+                        "string",
+                        context.packageName
+                    )
+                    if (resId == 0) {
+                        authViewModel.errorMessage = "Missing default_web_client_id"
+                        return@Button
+                    }
+                    val webClientId = context.getString(resId)
+                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestIdToken(webClientId)
+                        .requestEmail()
+                        .build()
+                    val client = GoogleSignIn.getClient(context, gso)
+                    client.signOut().addOnCompleteListener {
+                        googleLauncher.launch(client.signInIntent)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Sign in with Google")
+            }
+
+            if (authViewModel.errorMessage != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = authViewModel.errorMessage ?: "",
+                    color = Color.Red,
+                    fontSize = 12.sp,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             // CREATE ACCOUNT
             Row {
                 Text(
@@ -202,6 +271,94 @@ fun SignIn(
                 )
             }
         }
+    }
+
+    if (authViewModel.showGoogleProfileDialog) {
+        val countries = remember {
+            Locale.getISOCountries()
+                .map { code -> Locale("", code).displayCountry }
+                .distinct()
+                .sorted()
+        }
+        AlertDialog(
+            onDismissRequest = {
+                authViewModel.showGoogleProfileDialog = false
+                googleUsername = ""
+                googleCountry = ""
+                googleCountryError = false
+                countryExpanded = false
+            },
+            title = { Text("Complete profile") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = googleUsername,
+                        onValueChange = { googleUsername = it },
+                        label = { Text("Username") },
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ExposedDropdownMenuBox(
+                        expanded = countryExpanded,
+                        onExpandedChange = { countryExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = googleCountry,
+                            onValueChange = { },
+                            label = { Text("Country") },
+                            readOnly = true,
+                            isError = googleCountryError,
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = countryExpanded)
+                            },
+                            modifier = Modifier.menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = countryExpanded,
+                            onDismissRequest = { countryExpanded = false }
+                        ) {
+                            countries.forEach { country ->
+                                DropdownMenuItem(
+                                    text = { Text(country) },
+                                    onClick = {
+                                        googleCountry = country
+                                        googleCountryError = false
+                                        countryExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    if (googleCountryError) {
+                        Text("Country not valid", color = Color.Red)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (authViewModel.toAlpha3Country(googleCountry) == null) {
+                            googleCountryError = true
+                            return@TextButton
+                        }
+                        authViewModel.completeGoogleProfile(googleUsername, googleCountry)
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    authViewModel.showGoogleProfileDialog = false
+                    googleUsername = ""
+                    googleCountry = ""
+                    googleCountryError = false
+                    countryExpanded = false
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

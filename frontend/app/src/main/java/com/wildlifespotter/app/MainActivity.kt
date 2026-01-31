@@ -24,6 +24,7 @@ import com.wildlifespotter.app.ui.signup.SignUp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wildlifespotter.app.models.AuthViewModel
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,6 +76,7 @@ fun AppNavigation() {
     val navController = rememberNavController()
     val auth = FirebaseAuth.getInstance()
     val authViewModel: AuthViewModel = viewModel()
+    val context = LocalContext.current
 
     Surface(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = "loading") {
@@ -82,11 +84,28 @@ fun AppNavigation() {
             // ----- LoadingScreen -----
             composable("loading") {
                 LaunchedEffect(Unit) {
-                    if (auth.currentUser != null) {
-                        // Logged user
-                        navController.navigate("home") {
-                            popUpTo("loading") { inclusive = true }
-                        }
+                    val currentUser = auth.currentUser
+                    if (currentUser != null) {
+                        val db = FirebaseFirestore.getInstance()
+                        db.collection("users")
+                            .document(currentUser.uid)
+                            .get()
+                            .addOnSuccessListener { doc ->
+                                if (doc.exists()) {
+                                    navController.navigate("home") {
+                                        popUpTo("loading") { inclusive = true }
+                                    }
+                                } else {
+                                    navController.navigate("sign_in") {
+                                        popUpTo("loading") { inclusive = true }
+                                    }
+                                }
+                            }
+                            .addOnFailureListener {
+                                navController.navigate("sign_in") {
+                                    popUpTo("loading") { inclusive = true }
+                                }
+                            }
                     } else {
                         navController.navigate("onboarding") {
                             popUpTo("loading") { inclusive = true }
@@ -152,7 +171,7 @@ fun AppNavigation() {
             composable("home") {
                 MainScreen(
                     onLogout = {
-                        authViewModel.logout()
+                        authViewModel.logout(context)
                         navController.navigate("sign_in") {
                             popUpTo("home") { inclusive = true }
                         }

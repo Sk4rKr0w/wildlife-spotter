@@ -160,11 +160,8 @@ app.get("/images/:id/identify", checkAuth, async (req, res) => {
     });
     formData.append("image", blob, row.filename);
 
-    if (req.body?.country) {
-      formData.append("country", String(req.body.country));
-    }
-    if (req.body?.threshold) {
-      formData.append("threshold", String(req.body.threshold));
+    if (req.query.country) {
+      formData.append("country", String(req.query.country));
     }
 
     const response = await fetch(apiUrl, {
