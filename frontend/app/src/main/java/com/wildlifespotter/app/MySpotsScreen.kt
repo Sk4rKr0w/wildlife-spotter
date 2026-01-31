@@ -106,8 +106,7 @@ fun MySpotsScreen() {
                 }
                 UserSpot(
                     id = doc.id,
-                    speciesLabel = speciesLabel,
-                    speciesTaxonomy = taxonomyRaw,
+                    speciesLabel = speciesLabel.replaceFirstChar { it.uppercase() },                    speciesTaxonomy = taxonomyRaw,
                     description = doc.getString("description") ?: "",
                     locationName = doc.getString("location_name") ?: "Unknown location",
                     imageId = doc.getString("image_id") ?: "",

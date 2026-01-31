@@ -1,5 +1,6 @@
 package com.wildlifespotter.app
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -28,6 +30,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
+import com.wildlifespotter.app.ui.components.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -69,14 +72,9 @@ fun ProfileScreen(onLogout: () -> Unit) {
     val accent = Color(0xFFFFC107)
     val error = Color(0xFFE53935)
 
-    val background = Brush.verticalGradient(
-        listOf(Color(0xFF1A2332), Color(0xFF2D3E50))
-    )
-
     /* ---------------- Load User ---------------- */
     LaunchedEffect(Unit) {
         user?.let { firebaseUser ->
-            // ✅ CARICA I DATI DA FIRESTORE (fonte di verità)
             try {
                 val userDoc = db.collection("users")
                     .document(firebaseUser.uid)
@@ -84,16 +82,13 @@ fun ProfileScreen(onLogout: () -> Unit) {
                     .await()
                 
                 if (userDoc.exists()) {
-                    // Prendi i dati da Firestore
                     username = userDoc.getString("username") ?: firebaseUser.displayName ?: "User"
                     email = userDoc.getString("email") ?: firebaseUser.email ?: ""
                 } else {
-                    // Fallback a Firebase Auth se il documento non esiste
                     username = firebaseUser.displayName ?: "User"
                     email = firebaseUser.email ?: ""
                 }
             } catch (e: Exception) {
-                // In caso di errore, usa i dati da Firebase Auth
                 username = firebaseUser.displayName ?: "User"
                 email = firebaseUser.email ?: ""
             }
@@ -102,11 +97,15 @@ fun ProfileScreen(onLogout: () -> Unit) {
     }
 
     /* ---------------- UI ---------------- */
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(background)
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Sfondo animato
+        AnimatedWaveBackground(
+            primaryColor = Color(0xFF4CAF50),
+            secondaryColor = Color(0xFF2EA333)
+        )
+        
+        FloatingParticles(particleCount = 10)
+        
         if (isLoadingProfile) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),
@@ -123,47 +122,43 @@ fun ProfileScreen(onLogout: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
+            Spacer(Modifier.height(30.dp))
+
+            /* ---------------- Animated Avatar ---------------- */
+            AnimatedProfileAvatar(
+                initial = username.firstOrNull()?.uppercase() ?: "U",
+                primaryColor = primary
+            )
+
             Spacer(Modifier.height(20.dp))
 
-            /* ---------------- Avatar ---------------- */
-            Box(
-                modifier = Modifier
-                    .size(120.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            listOf(primary, primary.copy(alpha = 0.7f))
-                        )
-                    )
-                    .border(4.dp, Color.White.copy(0.3f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = username.firstOrNull()?.uppercase() ?: "U",
-                    fontSize = 48.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Text(username, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Text(email, color = Color.Gray)
+            Text(
+                username,
+                color = Color(0xFF2E7D32),
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                email,
+                color = Color.Gray,
+                fontSize = 16.sp
+            )
 
             Spacer(Modifier.height(32.dp))
 
-            /* ---------------- Card ---------------- */
+            /* ---------------- Profile Card ---------------- */
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF374B5E)),
-                shape = RoundedCornerShape(20.dp)
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF374B5E).copy(alpha = 0.9f)
+                ),
+                shape = RoundedCornerShape(24.dp)
             ) {
-                Column(Modifier.padding(20.dp)) {
+                Column(Modifier.padding(24.dp)) {
 
                     Header(isEditMode) { isEditMode = !isEditMode }
 
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(24.dp))
 
                     ProfileField(
                         value = username,
@@ -171,8 +166,8 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         label = "Username",
                         icon = Icons.Default.Person,
                         enabled = isEditMode,
-                        primary = primary
-                    )
+                        primary = primary,
+                        )
 
                     Spacer(Modifier.height(16.dp))
 
@@ -187,20 +182,21 @@ fun ProfileScreen(onLogout: () -> Unit) {
                     )
 
                     if (isEditMode) {
+                        Spacer(Modifier.height(8.dp))
                         TextButton(onClick = { showPasswordFields = !showPasswordFields }) {
                             Icon(Icons.Default.Lock, null, tint = accent)
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                if (showPasswordFields) "Nascondi password"
-                                else "Cambia password",
-                                color = accent
+                                if (showPasswordFields) "Hide Password" else "Change Password",
+                                color = accent,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
 
                     if (isEditMode && showPasswordFields) {
                         PasswordField(
-                            "Password attuale",
+                            "Current Password",
                             currentPassword,
                             { currentPassword = it },
                             passwordVisible,
@@ -209,7 +205,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         )
 
                         PasswordField(
-                            "Nuova password",
+                            "New Password",
                             newPassword,
                             { newPassword = it },
                             newPasswordVisible,
@@ -218,7 +214,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         )
 
                         PasswordField(
-                            "Conferma password",
+                            "Confirm Password",
                             confirmPassword,
                             { confirmPassword = it },
                             confirmPasswordVisible,
@@ -229,12 +225,12 @@ fun ProfileScreen(onLogout: () -> Unit) {
                     }
 
                     if (message.isNotEmpty()) {
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(20.dp))
                         MessageCard(message, messageType, primary, error, accent)
                     }
 
                     if (isEditMode) {
-                        Spacer(Modifier.height(20.dp))
+                        Spacer(Modifier.height(24.dp))
                         SaveButton(
                             isLoading = isLoading,
                             primary = primary
@@ -250,7 +246,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                     newPassword,
                                     confirmPassword,
                                     onSuccess = {
-                                        message = "Profilo aggiornato"
+                                        message = "Profile updated successfully!"
                                         messageType = MessageType.SUCCESS
                                         isEditMode = false
                                         showPasswordFields = false
@@ -267,21 +263,93 @@ fun ProfileScreen(onLogout: () -> Unit) {
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
 
+            /* ---------------- Logout Button ---------------- */
             Button(
                 onClick = {
                     auth.signOut()
                     onLogout()
                 },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = error),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(Icons.Default.Logout, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Logout", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(12.dp))
+                Text("Logout", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
+            
+            Spacer(Modifier.height(40.dp))
+        }
+    }
+}
+
+/* ---------------- Animated Profile Avatar ---------------- */
+@Composable
+fun AnimatedProfileAvatar(
+    initial: String,
+    primaryColor: Color,
+    modifier: Modifier = Modifier
+) {
+    var rotation by remember { mutableFloatStateOf(0f) }
+    
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos {
+                rotation += 0.5f
+                if (rotation >= 360f) rotation = 0f
+            }
+        }
+    }
+    
+    Box(
+        modifier = modifier.size(140.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // Anello esterno animato
+        Canvas(modifier = Modifier.size(140.dp)) {
+            val strokeWidth = 6f
+            val radius = size.minDimension / 2 - strokeWidth
+            
+            for (i in 0..3) {
+                val startAngle = rotation + (i * 90f)
+                drawArc(
+                    color = when (i % 3) {
+                        0 -> primaryColor
+                        1 -> Color(0xFFFFC107)
+                        else -> Color(0xFF2EA333)
+                    },
+                    startAngle = startAngle,
+                    sweepAngle = 60f,
+                    useCenter = false,
+                    style = Stroke(width = strokeWidth),
+                    alpha = 0.8f
+                )
+            }
+        }
+        
+        // Cerchio avatar interno
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        listOf(primaryColor, primaryColor.copy(alpha = 0.7f))
+                    )
+                )
+                .border(4.dp, Color.White.copy(0.3f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = initial,
+                fontSize = 52.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
         }
     }
 }
@@ -307,7 +375,7 @@ suspend fun saveProfile(
 
         if (changePassword) {
             if (newPassword != confirmPassword) {
-                onError("Le password non coincidono")
+                onError("Passwords don't match")
                 return
             }
             val credential = EmailAuthProvider.getCredential(
@@ -317,12 +385,10 @@ suspend fun saveProfile(
             user.updatePassword(newPassword).await()
         }
 
-        // ✅ AGGIORNA EMAIL IN FIREBASE AUTH (se cambiata)
         if (email != user.email) {
             user.updateEmail(email).await()
         }
 
-        // ✅ AGGIORNA DISPLAY NAME IN FIREBASE AUTH (se cambiato)
         if (username != user.displayName) {
             val profileUpdates = UserProfileChangeRequest.Builder()
                 .setDisplayName(username)
@@ -330,7 +396,6 @@ suspend fun saveProfile(
             user.updateProfile(profileUpdates).await()
         }
 
-        // ✅ AGGIORNA FIRESTORE
         db.collection("users")
             .document(user.uid)
             .set(
@@ -346,7 +411,7 @@ suspend fun saveProfile(
 
         onSuccess()
     } catch (e: Exception) {
-        onError(e.message ?: "Errore sconosciuto")
+        onError(e.message ?: "Unknown error")
     } finally {
         setLoading(false)
     }
@@ -361,17 +426,27 @@ fun Header(isEdit: Boolean, onToggle: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            if (isEdit) "Modifica profilo" else "Profilo",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (isEdit) Icons.Default.Edit else Icons.Default.AccountCircle,
+                null,
+                tint = Color(0xFF4CAF50),
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                if (isEdit) "Edit Profile" else "Profile Details",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
         IconButton(onClick = onToggle) {
             Icon(
                 if (isEdit) Icons.Default.Close else Icons.Default.Edit,
                 null,
-                tint = Color(0xFF4CAF50)
+                tint = Color(0xFF4CAF50),
+                modifier = Modifier.size(24.dp)
             )
         }
     }
@@ -395,7 +470,20 @@ fun ProfileField(
         leadingIcon = { Icon(icon, null, tint = primary) },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         singleLine = true,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = primary,
+            unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
+            disabledBorderColor = Color.Gray.copy(alpha = 0.2f),
+            focusedLabelColor = primary,
+            unfocusedLabelColor = Color.Gray,
+            disabledLabelColor = Color.Gray,
+            cursorColor = primary,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            disabledTextColor = Color.Gray
+        ),
+        shape = RoundedCornerShape(12.dp)
     )
 }
 
@@ -419,14 +507,26 @@ fun PasswordField(
             IconButton(onClick = onToggle) {
                 Icon(
                     if (visible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                    null
+                    null,
+                    tint = Color.Gray
                 )
             }
         },
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         singleLine = true,
         isError = isError,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = primary,
+            unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
+            errorBorderColor = Color(0xFFE53935),
+            focusedLabelColor = primary,
+            unfocusedLabelColor = Color.Gray,
+            cursorColor = primary,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White
+        ),
+        shape = RoundedCornerShape(12.dp)
     )
 }
 
@@ -435,16 +535,22 @@ fun SaveButton(isLoading: Boolean, primary: Color, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         enabled = !isLoading,
-        modifier = Modifier.fillMaxWidth().height(56.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
         colors = ButtonDefaults.buttonColors(containerColor = primary),
         shape = RoundedCornerShape(16.dp)
     ) {
         if (isLoading) {
-            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+            CircularProgressIndicator(
+                color = Color.White,
+                modifier = Modifier.size(28.dp),
+                strokeWidth = 3.dp
+            )
         } else {
             Icon(Icons.Default.Save, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Salva", fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(12.dp))
+            Text("Save Changes", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
     }
 }
@@ -462,15 +568,37 @@ fun MessageCard(
         MessageType.ERROR -> error
         MessageType.INFO -> accent
     }
+    
+    val icon = when (type) {
+        MessageType.SUCCESS -> Icons.Default.CheckCircle
+        MessageType.ERROR -> Icons.Default.Error
+        MessageType.INFO -> Icons.Default.Info
+    }
+    
     Card(
-        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.2f)),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = color.copy(alpha = 0.2f)
+        ),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Text(
-            text,
-            modifier = Modifier.padding(12.dp),
-            color = Color.White
-        )
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text,
+                color = Color.White,
+                fontSize = 14.sp
+            )
+        }
     }
 }
 

@@ -8,21 +8,33 @@ import android.hardware.SensorManager
 import android.location.Geocoder
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import com.google.android.gms.location.LocationServices
+import com.wildlifespotter.app.ui.components.*
 import kotlin.math.sqrt
 
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
 
     // ===== Stati contapassi =====
     var totalSteps by remember { mutableStateOf(0) }
@@ -63,13 +75,11 @@ fun HomeScreen() {
         object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 when (event.sensor.type) {
-                    // ===== Contapassi =====
                     Sensor.TYPE_ACCELEROMETER -> {
                         val x = event.values[0]
                         val y = event.values[1]
                         val z = event.values[2]
 
-                        // Contapassi
                         val accel = sqrt(x * x + y * y + z * z)
                         val now = System.currentTimeMillis()
                         if (accel > stepThreshold && now - lastStepTime > minStepInterval) {
@@ -77,7 +87,6 @@ fun HomeScreen() {
                             lastStepTime = now
                         }
 
-                        // Bussola
                         System.arraycopy(event.values, 0, gravityValues, 0, 3)
                     }
                     Sensor.TYPE_MAGNETIC_FIELD -> {
@@ -85,7 +94,6 @@ fun HomeScreen() {
                     }
                 }
 
-                // Calcolo azimuth
                 val success = SensorManager.getRotationMatrix(rotationMatrix, null, gravityValues, magneticValues)
                 if (success) {
                     SensorManager.getOrientation(rotationMatrix, orientationValues)
@@ -99,7 +107,6 @@ fun HomeScreen() {
         }
     }
 
-    // ===== Registra listener sensori =====
     DisposableEffect(sensorManager) {
         accelSensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI) }
         magnetSensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI) }
@@ -121,7 +128,6 @@ fun HomeScreen() {
                     latitude = it.latitude
                     longitude = it.longitude
 
-                    // Geocoder per indirizzo leggibile
                     val geocoder = Geocoder(context)
                     val list = geocoder.getFromLocation(latitude, longitude, 1)
                     if (!list.isNullOrEmpty()) {
@@ -135,49 +141,290 @@ fun HomeScreen() {
     }
 
     // ===== UI Compose =====
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Contapassi
-        Text(
-            text = "Steps taken: $currentSteps",
-            style = MaterialTheme.typography.headlineMedium,
+    val backgroundGradient = Brush.verticalGradient(
+        colors = listOf(Color(0xFF1A2332), Color(0xFF2D3E50), Color(0xFF1A2332))
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Sfondo animato con onde
+        AnimatedWaveBackground(
+            primaryColor = Color(0xFF4CAF50),
+            secondaryColor = Color(0xFF2EA333)
+        )
+        
+        // Particelle fluttuanti
+        FloatingParticles(particleCount = 15)
+        
+        Column(
             modifier = Modifier
-                .clickable {
-                    Toast.makeText(context, "Long tap to reset steps", Toast.LENGTH_SHORT).show()
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(20.dp))
+            
+            // Title
+            Text(
+                text = "Activity Dashboard",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF2E7D32),
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(20.dp))
+            
+            // StepCounter Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF374B5E).copy(alpha = 0.8f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.DirectionsWalk,
+                                contentDescription = null,
+                                tint = Color(0xFF4CAF50),
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "Steps Today",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        IconButton(
+                            onClick = {
+                                previousTotalSteps = totalSteps
+                                saveData(context, previousTotalSteps)
+                                Toast.makeText(context, "Steps reset!", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Reset",
+                                tint = Color(0xFFFFC107)
+                            )
+                        }
+                    }
+                    
+                    Spacer(Modifier.height(24.dp))
+                    
+                    // Indicatore circolare animato
+                    CircularStepIndicator(
+                        currentSteps = currentSteps,
+                        goalSteps = 10000,
+                        size = 220f
+                    )
+                    
+                    Spacer(Modifier.height(16.dp))
+                    
+                    // Grafico a onde
+                    WaveActivityGraph()
                 }
-                .padding(16.dp)
-        )
-
-        Button(onClick = {
-            previousTotalSteps = totalSteps
-            saveData(context, previousTotalSteps)
-        }) {
-            Text("Reset Steps")
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Card bussola con canvas animato
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF374B5E).copy(alpha = 0.8f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Explore,
+                            contentDescription = null,
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            "Compass",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(24.dp))
+                    
+                    // Bussola animata
+                    AnimatedCompass(azimuth = azimuth, size = 200f)
+                    
+                    Spacer(Modifier.height(20.dp))
+                    
+                    // Info direzione
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF2D3E50))
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "Direction",
+                                color = Color.Gray,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                direction,
+                                color = Color.White,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "Azimuth",
+                                color = Color.Gray,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                "%.1f°".format(azimuth),
+                                color = Color.White,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Card posizione
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF374B5E).copy(alpha = 0.8f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = Color(0xFFE53935),
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            "Location",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(20.dp))
+                    
+                    // Indirizzo
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF2D3E50))
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Place,
+                            contentDescription = null,
+                            tint = Color(0xFF4CAF50)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            address,
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Coordinate
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF2D3E50))
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "Latitude",
+                                color = Color.Gray,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                "%.5f".format(latitude),
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "Longitude",
+                                color = Color.Gray,
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                "%.5f".format(longitude),
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(40.dp))
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        CircularProgressIndicator(
-            progress = currentSteps / 10000f.coerceAtLeast(1f),
-            modifier = Modifier.size(150.dp)
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Bussola
-        Text("Azimuth: %.1f°".format(azimuth), style = MaterialTheme.typography.headlineSmall)
-        Text("Direction: $direction", style = MaterialTheme.typography.headlineSmall)
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Posizione
-        Text("Lat: %.5f, Lon: %.5f".format(latitude, longitude), style = MaterialTheme.typography.bodyLarge)
-        Text("Address: $address", style = MaterialTheme.typography.bodyLarge)
     }
 }
 
