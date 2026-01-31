@@ -1,5 +1,8 @@
 package com.wildlifespotter.app
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
@@ -12,6 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
+import androidx.compose.ui.unit.dp
+import com.wildlifespotter.app.models.AuthViewModel
+import java.util.Locale
 import com.wildlifespotter.app.ui.components.AnimatedWaveBackground
 
 sealed class Screen(val route: String) {
@@ -21,11 +27,27 @@ sealed class Screen(val route: String) {
     object Profile : Screen("profile_tab")
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
+    authViewModel: AuthViewModel,
     onLogout: () -> Unit
 ) {
     val navController = rememberNavController()
+    var username by remember { mutableStateOf("") }
+    var usernameError by remember { mutableStateOf(false) }
+    var usernameTaken by remember { mutableStateOf(false) }
+    var usernameChecking by remember { mutableStateOf(false) }
+    var country by remember { mutableStateOf("") }
+    var countryError by remember { mutableStateOf(false) }
+    var countryExpanded by remember { mutableStateOf(false) }
+    val needsCountry = authViewModel.countryName.isBlank()
+    val countries = remember {
+        Locale.getISOCountries()
+            .map { code -> Locale("", code).displayCountry }
+            .distinct()
+            .sorted()
+    }
 
     Scaffold(
         bottomBar = { BottomBar(navController) }
@@ -61,6 +83,102 @@ fun MainScreen(
                 )
             }
         }
+    }
+
+    if (authViewModel.showGoogleProfileDialog) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Welcome!") },
+            text = {
+                Column {
+                    Text("Before you start, please set your username.", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = {
+                            username = it
+                            usernameError = false
+                            usernameTaken = false
+                        },
+                        label = { Text("Username") },
+                        singleLine = true,
+                        isError = usernameError || usernameTaken
+                    )
+                    if (usernameError) {
+                        Text("Username cannot be empty", color = MaterialTheme.colorScheme.error)
+                    }
+                    if (usernameTaken) {
+                        Text("Username already taken", color = MaterialTheme.colorScheme.error)
+                    }
+                    if (usernameChecking) {
+                        Text("Checking username...")
+                    }
+                    if (needsCountry) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        ExposedDropdownMenuBox(
+                            expanded = countryExpanded,
+                            onExpandedChange = { countryExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = country,
+                                onValueChange = { },
+                                label = { Text("Country") },
+                                readOnly = true,
+                                isError = countryError,
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = countryExpanded)
+                                },
+                                modifier = Modifier.menuAnchor()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = countryExpanded,
+                                onDismissRequest = { countryExpanded = false }
+                            ) {
+                                countries.forEach { item ->
+                                    DropdownMenuItem(
+                                        text = { Text(item) },
+                                        onClick = {
+                                            country = item
+                                            countryError = false
+                                            countryExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        if (countryError) {
+                            Text("Country not valid", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (username.isBlank()) {
+                            usernameError = true
+                            return@TextButton
+                        }
+                        val countryInput = if (needsCountry) country else authViewModel.countryName
+                        if (authViewModel.toAlpha3Country(countryInput) == null) {
+                            countryError = true
+                            return@TextButton
+                        }
+                        usernameChecking = true
+                        authViewModel.checkUsernameAvailable(username) { available, _ ->
+                            usernameChecking = false
+                            if (!available) {
+                                usernameTaken = true
+                                return@checkUsernameAvailable
+                            }
+                            authViewModel.completeGoogleProfile(username, countryInput)
+                        }
+                    }
+                ) {
+                    Text("Save")
+                }
+            }
+        )
     }
 }
 

@@ -8,6 +8,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -32,7 +35,6 @@ fun SignUp(
     var step by remember { mutableStateOf(0) }
     var acceptedTerms by remember { mutableStateOf(false) }
 
-    var usernameError by remember { mutableStateOf(false) }
     var emailError by remember { mutableStateOf(false) }
     var countryError by remember { mutableStateOf(false) }
     var passwordError by remember { mutableStateOf(false) }
@@ -91,13 +93,12 @@ fun SignUp(
             // ----- Contenuto principale -----
             Column(modifier = Modifier.padding(top = 130.dp)) {
                 when (step) {
-                    0 -> UsernameStep(authViewModel.username, onValueChange = { authViewModel.username = it }, error = usernameError)
-                    1 -> EmailStep(
+                    0 -> EmailStep(
                         authViewModel.email,
                         onEmailChange = { authViewModel.email = it },
                         error = emailError
                     )
-                    2 -> CountryStep(
+                    1 -> CountryStep(
                         country = authViewModel.countryName,
                         onCountryChange = {
                             authViewModel.countryName = it
@@ -105,7 +106,7 @@ fun SignUp(
                         },
                         error = countryError
                     )
-                    3 -> PasswordStep(
+                    2 -> PasswordStep(
                         authViewModel.password,
                         authViewModel.confirmPassword,
                         acceptedTerms,
@@ -127,24 +128,20 @@ fun SignUp(
                 DotsIndicator(currentStep = step)
                 Spacer(modifier = Modifier.height(16.dp))
                 PrimaryButton(
-                    text = if (step < 3) "Continue" else "Sign Up",
+                    text = if (step < 2) "Continue" else "Sign Up",
                     enabled = when (step) {
-                        0 -> authViewModel.username.isNotBlank() && !usernameError
-                        1 -> authViewModel.email.isNotBlank() && authViewModel.email.contains("@") && !emailError
-                        2 -> authViewModel.countryName.isNotBlank() && !countryError
-                        3 -> authViewModel.password.isNotBlank() && authViewModel.confirmPassword.isNotBlank() && authViewModel.password == authViewModel.confirmPassword && acceptedTerms && !passwordError
+                        0 -> authViewModel.email.isNotBlank() && authViewModel.email.contains("@") && !emailError
+                        1 -> authViewModel.countryName.isNotBlank() && !countryError
+                        2 -> authViewModel.password.isNotBlank() && authViewModel.confirmPassword.isNotBlank() && authViewModel.password == authViewModel.confirmPassword && acceptedTerms && !passwordError
                         else -> false
                     },
                     onClick = {
                         when (step) {
                             0 -> {
-                                if (authViewModel.username.isBlank()) usernameError = true else step++
-                            }
-                            1 -> {
                                 if (authViewModel.email.isBlank() || !authViewModel.email.contains("@")) emailError = true
                                 else step++
                             }
-                            2 -> {
+                            1 -> {
                                 if (authViewModel.countryName.isBlank() || authViewModel.toAlpha3Country(authViewModel.countryName) == null) {
                                     countryError = true
                                 } else {
@@ -152,7 +149,7 @@ fun SignUp(
                                     step++
                                 }
                             }
-                            3 -> {
+                            2 -> {
                                 if (authViewModel.password.isBlank() || authViewModel.password != authViewModel.confirmPassword || !acceptedTerms) passwordError = true
                                 else {
                                     // TODO: ASPETTARE IL BACKEND PER COMPLETARE SIGN-UP
@@ -168,14 +165,6 @@ fun SignUp(
 }
 
 /* -------------------- STEPS -------------------- */
-
-@Composable
-fun UsernameStep(username: String, onValueChange: (String) -> Unit, error: Boolean) {
-    Title("Choose a username")
-    Description("Choose a proper username that will be showable to other users.")
-    AppTextField(placeholder = "Mario Rossi", value = username, onValueChange = onValueChange)
-    if (error) Text("Username cannot be empty", color = Color.Red, style = MaterialTheme.typography.bodySmall)
-}
 
 @Composable
 fun EmailStep(
@@ -256,9 +245,66 @@ fun PasswordStep(
     onTermsChange: (Boolean) -> Unit,
     error: Boolean
 ) {
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmVisible by remember { mutableStateOf(false) }
+
     Title("Create a password")
-    AppTextField(placeholder = "Password", value = password, onValueChange = onPasswordChange)
-    AppTextField(placeholder = "Confirm password", value = confirmPassword, onValueChange = onConfirmPasswordChange)
+    TextField(
+        value = password,
+        onValueChange = onPasswordChange,
+        placeholder = { Text("Password", color = Color.White.copy(alpha = 0.6f)) },
+        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+        singleLine = true,
+        visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                Icon(
+                    imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    contentDescription = null,
+                    tint = Color.White
+                )
+            }
+        },
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            cursorColor = Color.White,
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            focusedIndicatorColor = Color.White,
+            unfocusedIndicatorColor = Color.White.copy(alpha = 0.5f),
+            focusedPlaceholderColor = Color.White.copy(alpha = 0.6f),
+            unfocusedPlaceholderColor = Color.White.copy(alpha = 0.6f)
+        )
+    )
+    TextField(
+        value = confirmPassword,
+        onValueChange = onConfirmPasswordChange,
+        placeholder = { Text("Confirm password", color = Color.White.copy(alpha = 0.6f)) },
+        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+        singleLine = true,
+        visualTransformation = if (confirmVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = { confirmVisible = !confirmVisible }) {
+                Icon(
+                    imageVector = if (confirmVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    contentDescription = null,
+                    tint = Color.White
+                )
+            }
+        },
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            cursorColor = Color.White,
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            focusedIndicatorColor = Color.White,
+            unfocusedIndicatorColor = Color.White.copy(alpha = 0.5f),
+            focusedPlaceholderColor = Color.White.copy(alpha = 0.6f),
+            unfocusedPlaceholderColor = Color.White.copy(alpha = 0.6f)
+        )
+    )
     if (error) Text("Passwords must match", color = Color.Red, style = MaterialTheme.typography.bodySmall)
 
     Spacer(modifier = Modifier.height(16.dp))
@@ -314,7 +360,7 @@ fun AppTextField(placeholder: String, value: String, onValueChange: (String) -> 
 @Composable
 fun DotsIndicator(currentStep: Int) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-        repeat(4) { index ->
+        repeat(3) { index ->
             Box(
                 modifier = Modifier
                     .padding(6.dp)

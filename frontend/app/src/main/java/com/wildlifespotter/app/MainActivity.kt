@@ -127,8 +127,6 @@ fun AppNavigation() {
 
             // ----- SignIn -----
             composable("sign_in") {
-                val authViewModel: AuthViewModel = viewModel()
-
                 LaunchedEffect(authViewModel.user) {
                     if (authViewModel.user != null) {
                         navController.navigate("home") {
@@ -170,6 +168,7 @@ fun AppNavigation() {
             // ----- Home -----
             composable("home") {
                 MainScreen(
+                    authViewModel = authViewModel,
                     onLogout = {
                         authViewModel.logout(context)
                         navController.navigate("sign_in") {

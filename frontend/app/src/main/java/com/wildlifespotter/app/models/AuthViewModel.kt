@@ -7,6 +7,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
@@ -34,6 +36,7 @@ class AuthViewModel : ViewModel() {
     var user by mutableStateOf<FirebaseUser?>(auth.currentUser)
     var showGoogleProfileDialog by mutableStateOf(false)
     private var pendingGoogleUser: FirebaseUser? = null
+    var isCheckingUsername by mutableStateOf(false)
 
     fun login() {
         if (email.isBlank() || password.isBlank()) return
@@ -45,21 +48,36 @@ class AuthViewModel : ViewModel() {
             .addOnCompleteListener { task ->
                 isLoading = false
                 if (task.isSuccessful) {
-                    user = auth.currentUser
-                    user?.let { firebaseUser ->
+                    val firebaseUser = auth.currentUser
+                    if (firebaseUser != null) {
+                        val isPasswordProvider = firebaseUser.providerData.any { it.providerId == "password" }
+                        if (isPasswordProvider && !firebaseUser.isEmailVerified) {
+                            auth.signOut()
+                            user = null
+                            errorMessage = "Email not verified. Please verify your email before logging in."
+                            return@addOnCompleteListener
+                        }
+                        user = firebaseUser
                         viewModelScope.launch {
                             syncUserEmail(firebaseUser)
                         }
+                    } else {
+                        errorMessage = "Error during login"
                     }
                 } else {
-                    errorMessage = task.exception?.message ?: "Error during login"
+                    val e = task.exception
+                    errorMessage = when (e) {
+                        is FirebaseAuthInvalidCredentialsException -> "Invalid credentials. If you recently changed email, verify it first and log in with the previous email."
+                        is FirebaseAuthInvalidUserException -> "User not found. If you recently changed email, verify it first and log in with the previous email."
+                        else -> e?.message ?: "Error during login"
+                    }
                 }
             }
     }
 
     // ✅ FUNZIONE AGGIORNATA: Crea automaticamente il documento Firestore
     fun register() {
-        if (email.isBlank() || password.isBlank() || confirmPassword.isBlank() || username.isBlank() || countryName.isBlank()) return
+        if (email.isBlank() || password.isBlank() || confirmPassword.isBlank() || countryName.isBlank()) return
         if (password != confirmPassword) {
             errorMessage = "Password not corresponding"
             return
@@ -77,21 +95,9 @@ class AuthViewModel : ViewModel() {
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     user = auth.currentUser
-
-                    // Aggiorna il profilo Firebase Auth
-                    val profileUpdates = UserProfileChangeRequest.Builder()
-                        .setDisplayName(username)
-                        .build()
-
-                    user?.updateProfile(profileUpdates)
-                        ?.addOnCompleteListener { updateTask ->
-                            if (updateTask.isSuccessful) {
-                                createUserDocument(user!!, username, countryCode)
-                            } else {
-                                isLoading = false
-                                errorMessage = "User created, error during saving username"
-                            }
-                        }
+                    pendingGoogleUser = user
+                    showGoogleProfileDialog = true
+                    isLoading = false
                 } else {
                     isLoading = false
                     errorMessage = task.exception?.message ?: "Error during registration"
@@ -187,17 +193,59 @@ class AuthViewModel : ViewModel() {
         firebaseUser.updateProfile(profileUpdates)
             ?.addOnCompleteListener { updateTask ->
                 if (updateTask.isSuccessful) {
-                    createUserDocument(firebaseUser, name, countryCode)
-                    user = firebaseUser
-                    pendingGoogleUser = null
-                    showGoogleProfileDialog = false
-                    viewModelScope.launch {
-                        syncUserEmail(firebaseUser)
-                    }
+                    db.collection("users")
+                        .whereEqualTo("username", name)
+                        .get()
+                        .addOnSuccessListener { snap ->
+                            if (snap.documents.any { it.id != firebaseUser.uid }) {
+                                isLoading = false
+                                errorMessage = "Username already taken"
+                                firebaseUser.delete()
+                                auth.signOut()
+                                pendingGoogleUser = null
+                                showGoogleProfileDialog = false
+                            } else {
+                                createUserDocument(firebaseUser, name, countryCode)
+                                user = firebaseUser
+                                pendingGoogleUser = null
+                                showGoogleProfileDialog = false
+                                viewModelScope.launch {
+                                    syncUserEmail(firebaseUser)
+                                }
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            isLoading = false
+                            errorMessage = e.message ?: "Username check failed"
+                            firebaseUser.delete()
+                            auth.signOut()
+                            pendingGoogleUser = null
+                            showGoogleProfileDialog = false
+                        }
                 } else {
                     isLoading = false
                     errorMessage = "User created, error during saving username"
                 }
+            }
+    }
+
+    fun checkUsernameAvailable(name: String, onResult: (Boolean, String?) -> Unit) {
+        if (name.isBlank()) {
+            onResult(false, "Username cannot be empty")
+            return
+        }
+        isCheckingUsername = true
+        db.collection("users")
+            .whereEqualTo("username", name)
+            .get()
+            .addOnSuccessListener { snap ->
+                isCheckingUsername = false
+                val available = snap.documents.isEmpty()
+                onResult(available, null)
+            }
+            .addOnFailureListener { e ->
+                isCheckingUsername = false
+                onResult(false, e.message ?: "Unable to verify username")
             }
     }
 

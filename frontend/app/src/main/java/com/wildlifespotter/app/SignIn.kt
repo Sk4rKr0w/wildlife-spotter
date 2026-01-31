@@ -42,10 +42,6 @@ fun SignIn(
     var passwordVisible by remember { mutableStateOf(false) }
     var emailError by remember { mutableStateOf(false) }
     var passwordError by remember { mutableStateOf(false) }
-    var googleUsername by remember { mutableStateOf("") }
-    var googleCountry by remember { mutableStateOf("") }
-    var googleCountryError by remember { mutableStateOf(false) }
-    var countryExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val googleLauncher = rememberLauncherForActivityResult(
@@ -288,93 +284,6 @@ fun SignIn(
         }
     }
 
-    if (authViewModel.showGoogleProfileDialog) {
-        val countries = remember {
-            Locale.getISOCountries()
-                .map { code -> Locale("", code).displayCountry }
-                .distinct()
-                .sorted()
-        }
-        AlertDialog(
-            onDismissRequest = {
-                authViewModel.showGoogleProfileDialog = false
-                googleUsername = ""
-                googleCountry = ""
-                googleCountryError = false
-                countryExpanded = false
-            },
-            title = { Text("Complete profile") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = googleUsername,
-                        onValueChange = { googleUsername = it },
-                        label = { Text("Username") },
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    ExposedDropdownMenuBox(
-                        expanded = countryExpanded,
-                        onExpandedChange = { countryExpanded = it }
-                    ) {
-                        OutlinedTextField(
-                            value = googleCountry,
-                            onValueChange = { },
-                            label = { Text("Country") },
-                            readOnly = true,
-                            isError = googleCountryError,
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = countryExpanded)
-                            },
-                            modifier = Modifier.menuAnchor()
-                        )
-                        ExposedDropdownMenu(
-                            expanded = countryExpanded,
-                            onDismissRequest = { countryExpanded = false }
-                        ) {
-                            countries.forEach { country ->
-                                DropdownMenuItem(
-                                    text = { Text(country) },
-                                    onClick = {
-                                        googleCountry = country
-                                        googleCountryError = false
-                                        countryExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                    if (googleCountryError) {
-                        Text("Country not valid", color = Color.Red)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (authViewModel.toAlpha3Country(googleCountry) == null) {
-                            googleCountryError = true
-                            return@TextButton
-                        }
-                        authViewModel.completeGoogleProfile(googleUsername, googleCountry)
-                    }
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    authViewModel.showGoogleProfileDialog = false
-                    googleUsername = ""
-                    googleCountry = ""
-                    googleCountryError = false
-                    countryExpanded = false
-                }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
 }
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 640)
