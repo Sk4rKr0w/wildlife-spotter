@@ -23,8 +23,8 @@ sealed class Screen(val route: String) {
     object Home : Screen("home_tab")
     object Add : Screen("add_tab")
     object MySpots : Screen("my_spots_tab")
-    object Rankings : Screen("rankings_tab")
     object Profile : Screen("profile_tab")
+    object Rankings : Screen ("rankings_tab")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,7 +51,7 @@ fun MainScreen(
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val showBottomBar = currentRoute !in listOf("steps_history", "spot_detail/{spotId}")
+    val showBottomBar = currentRoute !in listOf("steps_history", "spot_detail/{spotId}", "map_view")
 
     Scaffold(
         bottomBar = {
@@ -68,6 +68,9 @@ fun MainScreen(
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
+                    onNavigateToMap = {
+                        navController.navigate("map_view")
+                    },
                     onNavigateToHistory = {
                         navController.navigate("steps_history")
                     }
@@ -82,6 +85,17 @@ fun MainScreen(
                 )
             }
 
+            composable("map_view") {
+                MapViewScreen(
+                    onBackClick = {
+                        navController.popBackStack()
+                    },
+                    onSpotClick = { spotId ->
+                        navController.navigate("spot_detail/$spotId")
+                    }
+                )
+            }
+
             composable(Screen.Add.route) {
                 AddSpotScreen()
             }
@@ -91,10 +105,13 @@ fun MainScreen(
                     onNavigateToSpotDetail = { spotId ->
                         navController.navigate("spot_detail/$spotId")
                     }
-                )            }
+                )
+            }
+
             composable(Screen.Rankings.route) {
                 RankingsScreen()
             }
+
             composable(Screen.Profile.route) {
                 ProfileScreen(onLogout = onLogout)
             }

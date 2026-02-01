@@ -1,50 +1,26 @@
 package com.wildlifespotter.app
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.delay
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsWalk
-import androidx.compose.material.icons.filled.Pets
 
 private data class RankingUser(
     val id: String,
@@ -59,6 +35,7 @@ private data class RankingUser(
 fun RankingsScreen() {
     val db = remember { FirebaseFirestore.getInstance() }
     val scope = rememberCoroutineScope()
+    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
 
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -82,9 +59,7 @@ fun RankingsScreen() {
                 var query = db.collection("users")
                     .orderBy("totalSpots", Query.Direction.DESCENDING)
                     .limit(10)
-                if (startAfter != null) {
-                    query = query.startAfter(startAfter)
-                }
+                if (startAfter != null) query = query.startAfter(startAfter)
                 val snap = query.get().await()
                 val list = snap.documents.map { doc ->
                     RankingUser(
@@ -99,13 +74,9 @@ fun RankingsScreen() {
                     pageCursors.clear()
                     currentPage = 0
                 }
-                val last = snap.documents.lastOrNull()
-                if (last != null) {
-                    if (pageCursors.size > currentPage) {
-                        pageCursors[currentPage] = last
-                    } else {
-                        pageCursors.add(last)
-                    }
+                snap.documents.lastOrNull()?.let { last ->
+                    if (pageCursors.size > currentPage) pageCursors[currentPage] = last
+                    else pageCursors.add(last)
                 }
             } catch (e: Exception) {
                 error = e.message ?: "Failed to load rankings"
@@ -143,9 +114,7 @@ fun RankingsScreen() {
                     var q = db.collection("users")
                         .orderBy("username", Query.Direction.ASCENDING)
                         .limit(50)
-                    if (cursor != null) {
-                        q = q.startAfter(cursor)
-                    }
+                    if (cursor != null) q = q.startAfter(cursor)
                     val snap = q.get().await()
                     if (snap.isEmpty) {
                         searchDone = true
@@ -153,8 +122,7 @@ fun RankingsScreen() {
                     }
                     cursor = snap.documents.last()
                     val matches = snap.documents.filter { doc ->
-                        val uname = (doc.getString("username") ?: "").lowercase()
-                        uname.contains(query)
+                        (doc.getString("username") ?: "").lowercase().contains(query)
                     }
                     val usersMatched = matches.map { doc ->
                         val spots = doc.getLong("totalSpots") ?: 0L
@@ -180,19 +148,15 @@ fun RankingsScreen() {
         }
     }
 
-    LaunchedEffect(Unit) {
-        loadPage(reset = true)
-    }
+    LaunchedEffect(Unit) { loadPage(reset = true) }
 
     LaunchedEffect(searchUsername) {
         delay(300)
-        val query = searchUsername.trim()
-        if (query.isEmpty()) {
+        if (searchUsername.trim().isEmpty()) resetSearch()
+        else {
             resetSearch()
-            return@LaunchedEffect
+            loadSearchPage()
         }
-        resetSearch()
-        loadSearchPage()
     }
 
     Column(
@@ -218,9 +182,8 @@ fun RankingsScreen() {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        if (error != null) {
-            Text(error ?: "Error", color = MaterialTheme.colorScheme.error)
-        } else {
+        if (error != null) Text(error ?: "Error", color = MaterialTheme.colorScheme.error)
+        else {
             val showingSearch = searchUsername.trim().isNotEmpty()
             val useSearchResults = showingSearch && searchResults.isNotEmpty()
             val listToShow = if (useSearchResults) {
@@ -231,34 +194,26 @@ fun RankingsScreen() {
                 if (showingSearch && !isSearching && !isLoading) emptyList() else users
             }
             val showNoResults = showingSearch && !isSearching && !isLoading && !useSearchResults
-            if (showNoResults) {
-                Text("No results found", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            if (showNoResults) Text("No results found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
             Box(modifier = Modifier.weight(1f)) {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(alpha = if (isSearching || isLoading) 0.6f else 1f)
+                    modifier = Modifier.fillMaxSize().graphicsLayer(alpha = if (isSearching || isLoading) 0.6f else 1f)
                 ) {
                     itemsIndexed(listToShow) { index, user ->
                         val rank = if (useSearchResults) {
                             user.globalRank ?: (searchPage * 10 + index + 1)
-                        } else {
-                            currentPage * 10 + index + 1
-                        }
-                        RankingRow(user, rank)
+                        } else currentPage * 10 + index + 1
+                        RankingRow(user, rank, currentUserId)
                     }
                 }
+
                 if (isSearching || isLoading) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.Center),
+                        modifier = Modifier.fillMaxWidth().align(Alignment.Center),
                         horizontalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    ) { CircularProgressIndicator() }
                 }
             }
 
@@ -272,12 +227,10 @@ fun RankingsScreen() {
                 TextButton(
                     enabled = if (showingSearch) searchPage > 0 else currentPage > 0,
                     onClick = {
-                        if (showingSearch) {
-                            if (searchPage == 0) return@TextButton
-                            searchPage -= 1
-                        } else {
+                        if (showingSearch) { if (searchPage == 0) return@TextButton; searchPage-- }
+                        else {
                             if (currentPage == 0) return@TextButton
-                            currentPage -= 1
+                            currentPage--
                             val cursor = if (currentPage == 0) null else pageCursors.getOrNull(currentPage - 1)
                             loadPage(startAfter = cursor)
                         }
@@ -287,19 +240,12 @@ fun RankingsScreen() {
                 Text("Page ${if (showingSearch) searchPage + 1 else currentPage + 1}")
 
                 TextButton(
-                    enabled = if (showingSearch) {
-                        !searchDone || (searchPage + 1) * 10 < searchResults.size
-                    } else {
-                        users.size == 10
-                    },
+                    enabled = if (showingSearch) !searchDone || (searchPage + 1) * 10 < searchResults.size else users.size == 10,
                     onClick = {
-                        if (showingSearch) {
-                            searchPage += 1
-                            loadSearchPage()
-                        } else {
+                        if (showingSearch) { searchPage++; loadSearchPage() }
+                        else {
                             val cursor = pageCursors.getOrNull(currentPage) ?: return@TextButton
-                            currentPage += 1
-                            loadPage(startAfter = cursor)
+                            currentPage++; loadPage(startAfter = cursor)
                         }
                     }
                 ) { Text("Next") }
@@ -309,47 +255,46 @@ fun RankingsScreen() {
 }
 
 @Composable
-private fun RankingRow(user: RankingUser, rank: Int) {
+private fun RankingRow(user: RankingUser, rank: Int, currentUserId: String?) {
+    val isCurrentUser = user.id == currentUserId
+
     val accent = when (rank) {
-        1 -> Color(0xFFD4AF37) // gold
-        2 -> Color(0xFFC0C0C0) // silver
-        3 -> Color(0xFFCD7F32) // bronze
-        4 -> Color(0xFF4CAF50) // green
-        5 -> Color(0xFF03A9F4) // blue
+        1 -> Color(0xFFD4AF37)
+        2 -> Color(0xFFC0C0C0)
+        3 -> Color(0xFFCD7F32)
+        4 -> Color(0xFF4CAF50)
+        5 -> Color(0xFF03A9F4)
         else -> Color(0xFF546E7A)
     }
 
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF374B5E).copy(alpha = 0.85f)
+            containerColor = if (isCurrentUser) Color(0xFF121212) else Color(0xFF374B5E).copy(alpha = 0.85f)
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "#$rank",
-                    color = accent,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.padding(horizontal = 8.dp))
+                Text("#$rank", color = accent, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(user.username, color = Color.White, fontWeight = FontWeight.SemiBold)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Pets, contentDescription = null, tint = Color.LightGray)
-                            Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text("${user.spots}", color = Color.LightGray)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.DirectionsWalk, contentDescription = null, tint = Color.LightGray)
-                            Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text("${user.steps}", color = Color.LightGray)
                         }
                     }

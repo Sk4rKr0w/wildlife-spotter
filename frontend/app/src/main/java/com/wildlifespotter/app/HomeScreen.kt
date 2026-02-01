@@ -38,7 +38,10 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.tasks.await
 
 @Composable
-fun HomeScreen(onNavigateToHistory: () -> Unit) {
+fun HomeScreen(
+    onNavigateToMap: () -> Unit,
+    onNavigateToHistory: () -> Unit
+){
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
@@ -394,6 +397,38 @@ fun HomeScreen(onNavigateToHistory: () -> Unit) {
             )
 
             Spacer(modifier = Modifier.height(20.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+                    .clickable { onNavigateToMap() },
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF2D3E50).copy(alpha = 0.85f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Map,
+                        contentDescription = null,
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        "View My Spots on Map",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+
 
             // StepCounter Card
             Card(
