@@ -320,7 +320,7 @@ fun HomeScreen(
                     )
                     Spacer(Modifier.width(16.dp))
                     Text(
-                        "View My Spots on Map",
+                        "View Nearby Spots on Map",
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold

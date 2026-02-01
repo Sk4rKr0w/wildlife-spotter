@@ -21,6 +21,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.google.android.gms.location.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.firebase.geofire.GeoFireUtils
+import com.firebase.geofire.GeoLocation
 import kotlinx.coroutines.tasks.await
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -33,7 +35,8 @@ data class SpotLocation(
     val latitude: Double,
     val longitude: Double,
     val speciesLabel: String,
-    val locationName: String
+    val locationName: String,
+    val userId: String
 )
 
 @SuppressLint("MissingPermission")
@@ -123,40 +126,53 @@ fun MapViewScreen(
         }
     }
 
-    /* ---------------- SPOTS  ---------------- */
-    LaunchedEffect(Unit) {
+    LaunchedEffect(userLocation) {
+        val loc = userLocation ?: return@LaunchedEffect
         try {
-            val userId = auth.currentUser?.uid
-            if (userId != null) {
-                val snapshot = db.collection("spots")
-                    .whereEqualTo("user_id", userId)
-                    .get()
-                    .await()
+            // Geohash del centro (posizione utente), troncato a 5 caratteri (~5 km di lato).
+            // Tutti gli spot che condividono lo stesso prefisso a 5 char sono nel raggio.
+            val fullHash = GeoFireUtils.getGeoHashForLocation(
+                GeoLocation(loc.latitude, loc.longitude)
+            )
+            val prefix = fullHash.substring(0, 5)
 
-                spots = snapshot.documents.mapNotNull { doc ->
-                    try {
-                        val lat = doc.getDouble("latitude") ?: return@mapNotNull null
-                        val lng = doc.getDouble("longitude") ?: return@mapNotNull null
-                        val speciesRaw = doc.get("species")
-                        val speciesLabel = when (speciesRaw) {
-                            is String -> speciesRaw
-                            is Map<*, *> -> speciesRaw["label"] as? String ?: "Unknown"
-                            else -> "Unknown"
-                        }
-                        SpotLocation(
-                            id = doc.id,
-                            latitude = lat,
-                            longitude = lng,
-                            speciesLabel = speciesLabel.replaceFirstChar { it.uppercase() },
-                            locationName = doc.getString("location_name") ?: "Unknown"
-                        )
-                    } catch (e: Exception) {
-                        Log.e("MapViewScreen", "Error parsing spot", e)
-                        null
+            // Range lessicografico sul prefisso: "abcde" .. "abcdf"
+            // (ultimo carattere +1 nel charset base32 di geohash: 0-9 a-z esclusi a,i,l,o)
+            val base32 = "0123456789bcdefghjkmnpqrstuvwxyz"
+            val lastChar = prefix.last()
+            val nextChar = base32[base32.indexOf(lastChar) + 1]
+            val rangeMin = prefix
+            val rangeMax = prefix.dropLast(1) + nextChar
+
+            val snapshot = db.collection("spots")
+                .orderBy("geohash")
+                .startAt(rangeMin)
+                .endBefore(rangeMax)
+                .get()
+                .await()
+
+            spots = snapshot.documents.mapNotNull { doc ->
+                try {
+                    val lat = doc.getDouble("latitude") ?: return@mapNotNull null
+                    val lng = doc.getDouble("longitude") ?: return@mapNotNull null
+                    val speciesRaw = doc.get("species")
+                    val speciesLabel = when (speciesRaw) {
+                        is String -> speciesRaw
+                        is Map<*, *> -> speciesRaw["label"] as? String ?: "Unknown"
+                        else -> "Unknown"
                     }
+                    SpotLocation(
+                        id = doc.id,
+                        latitude = lat,
+                        longitude = lng,
+                        speciesLabel = speciesLabel.replaceFirstChar { it.uppercase() },
+                        locationName = doc.getString("location_name") ?: "Unknown",
+                        userId = doc.getString("user_id") ?: ""
+                    )
+                } catch (e: Exception) {
+                    Log.e("MapViewScreen", "Error parsing spot", e)
+                    null
                 }
-            } else {
-                errorMessage = "User not logged in"
             }
         } catch (e: Exception) {
             errorMessage = e.message
@@ -165,8 +181,8 @@ fun MapViewScreen(
         }
     }
 
-    /* ---------------- Updating Markers ---------------- */
     LaunchedEffect(userLocation, spots) {
+        val currentUid = auth.currentUser?.uid
         mapView.overlays.clear()
 
         // User Marker
@@ -184,8 +200,8 @@ fun MapViewScreen(
             mapView.controller.setCenter(loc)
         }
 
-        // Spot Marker
         spots.forEach { spot ->
+            val isOwn = spot.userId == currentUid
             val marker = Marker(mapView).apply {
                 position = GeoPoint(spot.latitude, spot.longitude)
                 title = spot.speciesLabel
@@ -195,7 +211,7 @@ fun MapViewScreen(
                     true
                 }
                 ContextCompat.getDrawable(context, android.R.drawable.ic_dialog_map)?.let {
-                    it.setTint(android.graphics.Color.BLUE)
+                    it.setTint(if (isOwn) android.graphics.Color.GREEN else android.graphics.Color.BLUE)
                     icon = it as BitmapDrawable
                 }
             }
@@ -209,7 +225,7 @@ fun MapViewScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("My Spots Map") },
+                title = { Text("Nearby Spots") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")

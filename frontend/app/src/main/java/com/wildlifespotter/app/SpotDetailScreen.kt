@@ -16,6 +16,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.wildlifespotter.app.interfaces.RetrofitInstance
 import com.google.firebase.firestore.FieldValue
@@ -36,6 +37,7 @@ fun SpotDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     
     var spot by remember { mutableStateOf<UserSpot?>(null) }
+    var spotOwnerName by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     
@@ -78,6 +80,14 @@ fun SpotDetailScreen(
                 timestamp = doc.getTimestamp("timestamp"),
                 dailySteps = doc.getLong("daily_steps") ?: 0L
             )
+
+            // Get spot owner's username
+            val ownerUid = spot!!.userId
+            if (ownerUid.isNotBlank()) {
+                val ownerDoc = db.collection("users").document(ownerUid).get().await()
+                spotOwnerName = ownerDoc.getString("username")
+            }
+
             editedDescription = spot?.description ?: ""
         } catch (e: Exception) {
             error = e.message ?: "Unknown error"
@@ -146,6 +156,7 @@ fun SpotDetailScreen(
             spot != null -> {
                 SpotDetailContent(
                     spot = spot!!,
+                    ownerName = spotOwnerName,
                     modifier = Modifier.padding(paddingValues)
                 )
             }
@@ -259,10 +270,13 @@ fun SpotDetailScreen(
 @Composable
 fun SpotDetailContent(
     spot: UserSpot,
+    ownerName: String?,
     modifier: Modifier = Modifier
 ) {
     val formatter = remember { SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale.getDefault()) }
     val dateText = spot.timestamp?.toDate()?.let { formatter.format(it) } ?: "Unknown date"
+    val currentUid = remember { FirebaseAuth.getInstance().currentUser?.uid }
+    val isOwnSpot = currentUid != null && currentUid == spot.userId
     
     Column(
         modifier = modifier
@@ -293,6 +307,14 @@ fun SpotDetailContent(
                 text = spot.speciesLabel,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
+            )
+        }
+
+        DetailSection(title = "Spotted by") {
+            Text(
+                text = if (isOwnSpot) "🌿 Your spot" else (ownerName ?: "Unknown user"),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (isOwnSpot) FontWeight.SemiBold else FontWeight.Normal
             )
         }
         
@@ -332,6 +354,7 @@ fun SpotDetailContent(
             DetailSection(title = "Taxonomy") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     spot.speciesTaxonomy.forEach { (key, value) ->
+                        if (key == "id") return@forEach
                         if (value != null && value.toString().isNotBlank()) {
                             TaxonomyItem(
                                 label = key.replaceFirstChar { it.uppercase() },
