@@ -74,9 +74,16 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    val auth = FirebaseAuth.getInstance()
     val authViewModel: AuthViewModel = viewModel()
     val context = LocalContext.current
+
+    LaunchedEffect(authViewModel.user) {
+        if (authViewModel.user != null) {
+            navController.navigate("home") {
+                popUpTo("onboarding") { inclusive = true }
+            }
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = "loading") {
@@ -84,7 +91,7 @@ fun AppNavigation() {
             // ----- LoadingScreen -----
             composable("loading") {
                 LaunchedEffect(Unit) {
-                    val currentUser = auth.currentUser
+                    val currentUser = FirebaseAuth.getInstance().currentUser
                     if (currentUser != null) {
                         val db = FirebaseFirestore.getInstance()
                         db.collection("users")
@@ -127,14 +134,6 @@ fun AppNavigation() {
 
             // ----- SignIn -----
             composable("sign_in") {
-                LaunchedEffect(authViewModel.user) {
-                    if (authViewModel.user != null) {
-                        navController.navigate("home") {
-                            popUpTo("sign_in") { inclusive = true }
-                        }
-                    }
-                }
-
                 SignIn(
                     authViewModel = authViewModel,
                     onSignInClick = { authViewModel.login() },
@@ -146,14 +145,6 @@ fun AppNavigation() {
 
             // ----- SignUp -----
             composable("sign_up") {
-                LaunchedEffect(authViewModel.user) {
-                    if (authViewModel.user != null) {
-                        navController.navigate("home") {
-                            popUpTo("onboarding") { inclusive = true }
-                        }
-                    }
-                }
-
                 SignUp(
                     authViewModel = authViewModel,
                     onBackToSignIn = {

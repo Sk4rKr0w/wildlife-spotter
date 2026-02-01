@@ -33,7 +33,21 @@ class AuthViewModel : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
     var isLoading by mutableStateOf(false)
 
-    var user by mutableStateOf<FirebaseUser?>(auth.currentUser)
+    var user by mutableStateOf<FirebaseUser?>(null)
+    private val authStateListener: FirebaseAuth.AuthStateListener
+
+    init {
+        authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            user = firebaseAuth.currentUser
+        }
+        auth.addAuthStateListener(authStateListener)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        auth.removeAuthStateListener(authStateListener)
+    }
+
     var showGoogleProfileDialog by mutableStateOf(false)
     private var pendingGoogleUser: FirebaseUser? = null
     var isCheckingUsername by mutableStateOf(false)
