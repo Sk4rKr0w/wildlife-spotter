@@ -100,12 +100,13 @@ fun MainScreen(
                 AddSpotScreen()
             }
 
-            composable(Screen.MySpots.route) {
+            composable(Screen.MySpots.route) { backStackEntry ->
                 MySpotsScreen(
+                    navBackStackEntry = backStackEntry,
                     onNavigateToSpotDetail = { spotId ->
                         navController.navigate("spot_detail/$spotId")
                     }
-                )            
+                )
             }
 
             composable(Screen.Rankings.route) {
@@ -122,7 +123,12 @@ fun MainScreen(
                 SpotDetailScreen(
                     spotId = spotId,
                     onNavigateBack = { navController.popBackStack() },
-                    onSpotDeleted = { navController.popBackStack() }
+                    onSpotDeleted = {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("spot_deleted", true)
+                        navController.popBackStack()
+                    }
                 )
             }
         }

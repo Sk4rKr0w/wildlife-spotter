@@ -57,6 +57,9 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import com.wildlifespotter.app.interfaces.RetrofitInstance
 import com.wildlifespotter.app.ui.components.AnimatedWaveBackground
+import androidx.compose.material3.SnackbarDuration
+import androidx.navigation.NavBackStackEntry
+import com.google.firebase.firestore.FieldValue
 
 data class UserSpot(
     val id: String,
@@ -71,6 +74,7 @@ data class UserSpot(
 
 @Composable
 fun MySpotsScreen(
+    navBackStackEntry: NavBackStackEntry,
     onNavigateToSpotDetail: (String) -> Unit = {}
 ) {
     val auth = FirebaseAuth.getInstance()
@@ -123,6 +127,19 @@ fun MySpotsScreen(
             error = e.message ?: "Unknown error"
         } finally {
             isLoading = false
+        }
+    }
+
+    LaunchedEffect(navBackStackEntry) {
+        val spotDeleted = navBackStackEntry.savedStateHandle.get<Boolean>("spot_deleted")
+        if (spotDeleted == true) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = "Spot deleted",
+                    duration = SnackbarDuration.Short
+                )
+            }
+            navBackStackEntry.savedStateHandle.remove<Boolean>("spot_deleted")
         }
     }
 
@@ -203,7 +220,8 @@ fun MySpotsScreen(
                                         snackbarHostState.currentSnackbarData?.dismiss()
                                         val result = snackbarHostState.showSnackbar(
                                             message = "Spot deleted",
-                                            actionLabel = "Undo"
+                                            actionLabel = "Undo",
+                                            duration = SnackbarDuration.Short
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
                                             val restoreData = hashMapOf(
@@ -228,6 +246,13 @@ fun MySpotsScreen(
                                                     (resetTokens[removedSpot.id] ?: 0) + 1
                                             } catch (e: Exception) {
                                                 error = e.message ?: "Undo failed"
+                                            }
+                                        } else if (removedSpot.imageId.isNotBlank()) {
+                                            // Snackbar expired
+                                            try {
+                                                RetrofitInstance.api.deleteImage(removedSpot.imageId)
+                                            } catch (e: Exception) {
+                                                println("Failed to delete image: ${e.message}")
                                             }
                                         }
                                     }

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.wildlifespotter.app.interfaces.RetrofitInstance
+import com.google.firebase.firestore.FieldValue
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
@@ -204,7 +205,7 @@ fun SpotDetailScreen(
                 TextButton(
                     onClick = {
                         scope.launch {
-                            try {
+                                        try {
                                 db.collection("spots")
                                     .document(spotId)
                                     .delete()
@@ -214,18 +215,27 @@ fun SpotDetailScreen(
                                     try {
                                         RetrofitInstance.api.deleteImage(spot!!.imageId)
                                     } catch (e: Exception) {
-                                        // Ignore error, we can still proceed
+                                        // In case of error, log it and continue, as the main spot is already deleted
+                                        println("Failed to delete image: ${e.message}")
                                     }
+                                }
+
+                                if (spot!!.userId.isNotBlank()) {
+                                    db.collection("users").document(spot!!.userId)
+                                        .update("totalSpots", FieldValue.increment(-1))
+                                        .await()
                                 }
                                 
                                 showDeleteDialog = false
-                                snackbarHostState.showSnackbar("Spot deleted")
                                 onSpotDeleted()
                             } catch (e: Exception) {
                                 showDeleteDialog = false
-                                snackbarHostState.showSnackbar(
-                                    "Error: ${e.message ?: "Unknown error"}"
-                                )
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        message = "Error: ${e.message ?: "Unknown error"}",
+                                        duration = SnackbarDuration.Short
+                                    )
+                                }
                             }
                         }
                     },
