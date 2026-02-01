@@ -137,8 +137,20 @@ fun AppNavigation() {
                 SignIn(
                     authViewModel = authViewModel,
                     onSignInClick = { authViewModel.login() },
+                    onForgotPasswordClick = {
+                        navController.navigate("forgot_password")
+                    },
                     onCreateAccountClick = {
                         navController.navigate("sign_up")
+                    }
+                )
+            }
+
+            composable("forgot_password") {
+                ForgotPasswordScreen(
+                    authViewModel = authViewModel,
+                    onBackClick = {
+                        navController.popBackStack()
                     }
                 )
             }

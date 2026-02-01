@@ -30,6 +30,9 @@ class AuthViewModel : ViewModel() {
     var confirmPassword by mutableStateOf("")
     var countryName by mutableStateOf("")
 
+    var resetPasswordEmail by mutableStateOf("")
+    var resetPasswordSuccess by mutableStateOf(false)
+
     var errorMessage by mutableStateOf<String?>(null)
     var isLoading by mutableStateOf(false)
 
@@ -158,6 +161,25 @@ class AuthViewModel : ViewModel() {
             .addOnFailureListener { e ->
                 isLoading = false
                 errorMessage = e.message ?: "Unable to verify email"
+            }
+    }
+
+    fun sendResetEmail() {
+        val emailInput = resetPasswordEmail.trim()
+        if (emailInput.isBlank() || !emailInput.contains("@")) {
+            errorMessage = "Please enter a valid email"
+            return
+        }
+        isLoading = true
+        errorMessage = null
+        auth.sendPasswordResetEmail(emailInput)
+            .addOnSuccessListener {
+                isLoading = false
+                resetPasswordSuccess = true
+            }
+            .addOnFailureListener { e ->
+                isLoading = false
+                errorMessage = e.message ?: "Failed to send reset email"
             }
     }
 
