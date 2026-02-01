@@ -277,7 +277,10 @@ fun SignIn(
                     text = "Create one",
                     color = Color(0xFF2EA333),
                     fontSize = 14.sp,
-                    modifier = Modifier.clickable { onCreateAccountClick() }
+                    modifier = Modifier.clickable {
+                        authViewModel.resetAuthFields()
+                        onCreateAccountClick()
+                    }
                 )
             }
         }

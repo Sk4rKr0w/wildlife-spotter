@@ -501,6 +501,7 @@ suspend fun saveProfile(
 
         val data = hashMapOf(
             "username" to username,
+            "username_lower" to username.lowercase(),
             "uid" to user.uid,
             "updatedAt" to FieldValue.serverTimestamp()
         )

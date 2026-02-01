@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
@@ -22,6 +23,7 @@ sealed class Screen(val route: String) {
     object Home : Screen("home_tab")
     object Add : Screen("add_tab")
     object MySpots : Screen("my_spots_tab")
+    object Rankings : Screen("rankings_tab")
     object Profile : Screen("profile_tab")
 }
 
@@ -89,9 +91,10 @@ fun MainScreen(
                     onNavigateToSpotDetail = { spotId ->
                         navController.navigate("spot_detail/$spotId")
                     }
-                )
+                )            }
+            composable(Screen.Rankings.route) {
+                RankingsScreen()
             }
-
             composable(Screen.Profile.route) {
                 ProfileScreen(onLogout = onLogout)
             }
@@ -233,6 +236,18 @@ fun BottomBar(navController: NavHostController) {
             },
             icon = { Icon(Icons.Default.AddCircle, null) },
             label = { Text("Add") }
+        )
+
+        NavigationBarItem(
+            selected = currentRoute == Screen.Rankings.route,
+            onClick = {
+                navController.navigate(Screen.Rankings.route) {
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            },
+            icon = { Icon(Icons.Default.EmojiEvents, null) },
+            label = { Text("Rankings") }
         )
 
         NavigationBarItem(

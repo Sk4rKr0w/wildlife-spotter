@@ -37,6 +37,10 @@ class AuthViewModel : ViewModel() {
     var showGoogleProfileDialog by mutableStateOf(false)
     private var pendingGoogleUser: FirebaseUser? = null
     var isCheckingUsername by mutableStateOf(false)
+    var isCheckingEmail by mutableStateOf(false)
+
+    var registrationState by mutableStateOf<RegistrationState>(RegistrationState.IDLE)
+
 
     fun login() {
         if (email.isBlank() || password.isBlank()) return
@@ -75,6 +79,26 @@ class AuthViewModel : ViewModel() {
             }
     }
 
+    fun checkEmailAvailable(emailInput: String, onResult: (Boolean, String?) -> Unit) {
+        val emailValue = emailInput.trim()
+        if (emailValue.isBlank() || !emailValue.contains("@")) {
+            onResult(false, "Invalid email")
+            return
+        }
+        isCheckingEmail = true
+        auth.fetchSignInMethodsForEmail(emailValue)
+            .addOnSuccessListener { res ->
+                isCheckingEmail = false
+                val methods = res.signInMethods ?: emptyList()
+                val available = methods.isEmpty()
+                onResult(available, null)
+            }
+            .addOnFailureListener { e ->
+                isCheckingEmail = false
+                onResult(false, e.message ?: "Unable to verify email")
+            }
+    }
+
     fun register() {
         if (email.isBlank() || password.isBlank() || confirmPassword.isBlank() || countryName.isBlank()) return
         if (password != confirmPassword) {
@@ -90,17 +114,36 @@ class AuthViewModel : ViewModel() {
         isLoading = true
         errorMessage = null
 
-        auth.createUserWithEmailAndPassword(email, password)
-            .addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    user = auth.currentUser
-                    pendingGoogleUser = user
-                    showGoogleProfileDialog = true
+        auth.fetchSignInMethodsForEmail(email.trim())
+            .addOnSuccessListener { res ->
+                val methods = res.signInMethods ?: emptyList()
+                if (methods.isNotEmpty()) {
                     isLoading = false
-                } else {
-                    isLoading = false
-                    errorMessage = task.exception?.message ?: "Error during registration"
+                    errorMessage = "Email already in use"
+                    return@addOnSuccessListener
                 }
+                auth.createUserWithEmailAndPassword(email, password)
+                    .addOnCompleteListener { task ->
+                        if (task.isSuccessful) {
+                            val user = auth.currentUser
+                            user?.sendEmailVerification()?.addOnCompleteListener { sendEmailTask ->
+                                if(sendEmailTask.isSuccessful) {
+                                    registrationState = RegistrationState.SUCCESS
+                                    auth.signOut()
+                                } else {
+                                    errorMessage = "User created, but failed to send verification email."
+                                }
+                                isLoading = false
+                            }
+                        } else {
+                            isLoading = false
+                            errorMessage = task.exception?.message ?: "Error during registration"
+                        }
+                    }
+            }
+            .addOnFailureListener { e ->
+                isLoading = false
+                errorMessage = e.message ?: "Unable to verify email"
             }
     }
 
@@ -109,6 +152,7 @@ class AuthViewModel : ViewModel() {
             "uid" to firebaseUser.uid,
             "email" to firebaseUser.email,
             "username" to name,
+            "username_lower" to name.lowercase(),
             "country" to countryCode,
             "photoURL" to firebaseUser.photoUrl?.toString(),
             "createdAt" to FieldValue.serverTimestamp(),
@@ -292,4 +336,20 @@ class AuthViewModel : ViewModel() {
         GoogleSignIn.getClient(context, gso).signOut()
         user = null
     }
+
+    fun resetAuthFields() {
+        email = ""
+        password = ""
+        confirmPassword = ""
+        errorMessage = null
+    }
+
+    fun resetRegistrationState() {
+        registrationState = RegistrationState.IDLE
+    }
+}
+
+enum class RegistrationState {
+    IDLE,
+    SUCCESS
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wildlifespotter.app.R
 import com.wildlifespotter.app.models.AuthViewModel
+import com.wildlifespotter.app.models.RegistrationState
 import java.util.Locale
 
 @Composable
@@ -38,6 +39,40 @@ fun SignUp(
     var emailError by remember { mutableStateOf(false) }
     var countryError by remember { mutableStateOf(false) }
     var passwordError by remember { mutableStateOf(false) }
+    var showDialog by remember { mutableStateOf(false) }
+
+
+    val registrationState = authViewModel.registrationState
+
+    LaunchedEffect(registrationState) {
+        if (registrationState == RegistrationState.SUCCESS) {
+            showDialog = true
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showDialog = false
+                authViewModel.resetRegistrationState()
+                onBackToSignIn()
+            },
+            title = { Text("Registration Successful") },
+            text = { Text("A confirmation email has been sent to your email address.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDialog = false
+                        authViewModel.resetRegistrationState()
+                        onBackToSignIn()
+                    }
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
 
     Box(
         modifier = Modifier
@@ -57,7 +92,7 @@ fun SignUp(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Icon(
-                imageVector = Icons.Filled.ArrowBack,
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
                 modifier = Modifier
                     .size(36.dp)
@@ -95,7 +130,10 @@ fun SignUp(
                 when (step) {
                     0 -> EmailStep(
                         authViewModel.email,
-                        onEmailChange = { authViewModel.email = it },
+                        onEmailChange = {
+                            authViewModel.email = it
+                            emailError = false
+                        },
                         error = emailError
                     )
                     1 -> CountryStep(
@@ -152,12 +190,17 @@ fun SignUp(
                             2 -> {
                                 if (authViewModel.password.isBlank() || authViewModel.password != authViewModel.confirmPassword || !acceptedTerms) passwordError = true
                                 else {
-                                    onSignUpClick()
+                                    authViewModel.register()
                                 }
                             }
                         }
                     }
                 )
+
+                authViewModel.errorMessage?.let { msg ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(msg, color = Color.Red, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
