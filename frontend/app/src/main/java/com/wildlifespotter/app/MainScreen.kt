@@ -105,13 +105,13 @@ fun MainScreen(
                     onNavigateToSpotDetail = { spotId ->
                         navController.navigate("spot_detail/$spotId")
                     }
-                )
+                )            
             }
 
             composable(Screen.Rankings.route) {
                 RankingsScreen()
             }
-
+            
             composable(Screen.Profile.route) {
                 ProfileScreen(onLogout = onLogout)
             }

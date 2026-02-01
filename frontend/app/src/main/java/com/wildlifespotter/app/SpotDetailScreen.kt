@@ -209,6 +209,14 @@ fun SpotDetailScreen(
                                     .document(spotId)
                                     .delete()
                                     .await()
+
+                                if (spot!!.imageId.isNotBlank()) {
+                                    try {
+                                        RetrofitInstance.api.deleteImage(spot!!.imageId)
+                                    } catch (e: Exception) {
+                                        // Ignore error, we can still proceed
+                                    }
+                                }
                                 
                                 showDeleteDialog = false
                                 snackbarHostState.showSnackbar("Spot deleted")
