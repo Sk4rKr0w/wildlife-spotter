@@ -75,7 +75,6 @@ class AuthViewModel : ViewModel() {
             }
     }
 
-    // ✅ FUNZIONE AGGIORNATA: Crea automaticamente il documento Firestore
     fun register() {
         if (email.isBlank() || password.isBlank() || confirmPassword.isBlank() || countryName.isBlank()) return
         if (password != confirmPassword) {
@@ -105,7 +104,6 @@ class AuthViewModel : ViewModel() {
             }
     }
 
-    // ✅ NUOVA FUNZIONE: Crea documento utente in Firestore
     private fun createUserDocument(firebaseUser: FirebaseUser, name: String, countryCode: String) {
         val userData = hashMapOf(
             "uid" to firebaseUser.uid,
@@ -127,7 +125,6 @@ class AuthViewModel : ViewModel() {
             .set(userData)
             .addOnSuccessListener {
                 isLoading = false
-                // Registrazione completata con successo
             }
             .addOnFailureListener { e ->
                 isLoading = false

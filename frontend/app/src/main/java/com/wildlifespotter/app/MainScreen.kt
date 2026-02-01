@@ -12,13 +12,11 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import androidx.compose.ui.unit.dp
 import com.wildlifespotter.app.models.AuthViewModel
 import java.util.Locale
-import com.wildlifespotter.app.ui.components.AnimatedWaveBackground
 
 sealed class Screen(val route: String) {
     object Home : Screen("home_tab")
@@ -49,8 +47,16 @@ fun MainScreen(
             .sorted()
     }
 
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    val showBottomBar = currentRoute !in listOf("steps_history", "spot_detail/{spotId}")
+
     Scaffold(
-        bottomBar = { BottomBar(navController) }
+        bottomBar = {
+            if (showBottomBar) {
+                BottomBar(navController)
+            }
+        }
     ) { paddingValues ->
 
         NavHost(
@@ -59,20 +65,37 @@ fun MainScreen(
             modifier = Modifier.padding(paddingValues)
         ) {
             composable(Screen.Home.route) {
-                HomeScreen()
+                HomeScreen(
+                    onNavigateToHistory = {
+                        navController.navigate("steps_history")
+                    }
+                )
             }
+
+            composable("steps_history") {
+                StepsHistoryScreen(
+                    onBackClick = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
             composable(Screen.Add.route) {
                 AddSpotScreen()
             }
+
             composable(Screen.MySpots.route) {
                 MySpotsScreen(
                     onNavigateToSpotDetail = { spotId ->
                         navController.navigate("spot_detail/$spotId")
                     }
-                )            }
+                )
+            }
+
             composable(Screen.Profile.route) {
                 ProfileScreen(onLogout = onLogout)
             }
+
             composable("spot_detail/{spotId}") { backStackEntry ->
                 val spotId = backStackEntry.arguments?.getString("spotId") ?: return@composable
 

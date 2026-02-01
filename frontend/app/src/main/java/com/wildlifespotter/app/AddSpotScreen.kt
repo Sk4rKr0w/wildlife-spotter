@@ -44,7 +44,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.wildlifespotter.app.interfaces.IdentifyTaxonomy
 import com.wildlifespotter.app.interfaces.RetrofitInstance
-import com.wildlifespotter.app.ui.components.* // Assicurati che AnimatedWaveBackground e FloatingParticles siano qui
+import com.wildlifespotter.app.ui.components.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -63,7 +63,7 @@ fun AddSpotScreen() {
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
 
-    // ---------- Stati UI ----------
+    // ---------- UI States ----------
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var compressedImage by remember { mutableStateOf<ByteArray?>(null) }
     var speciesLabel by remember { mutableStateOf("") }
@@ -76,11 +76,11 @@ fun AddSpotScreen() {
     var latitude by remember { mutableDoubleStateOf(0.0) }
     var longitude by remember { mutableDoubleStateOf(0.0) }
 
-    // ---------- Sensori ----------
+    // ---------- Sensors ----------
     var currentSteps by remember { mutableFloatStateOf(0f) }
     var currentAzimuth by remember { mutableFloatStateOf(0f) }
 
-    // ---------- Sensori Setup ----------
+    // ---------- Sensors Setup ----------
     DisposableEffect(Unit) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
 
@@ -142,7 +142,6 @@ fun AddSpotScreen() {
                     longitude = lng
                     locationName = name
                 }
-                // Analisi preliminare (opzionale, se vuoi mostrare subito qualcosa) o semplicemente attendi l'upload
                 isAnalyzingImage = false
             }
         }
@@ -186,7 +185,7 @@ fun AddSpotScreen() {
         ) {
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Titolo
+            // Title
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 16.dp)) {
                 Icon(Icons.Default.AddLocationAlt, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(40.dp))
                 Spacer(Modifier.width(12.dp))

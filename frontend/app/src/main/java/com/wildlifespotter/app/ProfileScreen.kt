@@ -112,7 +112,6 @@ fun ProfileScreen(onLogout: () -> Unit) {
 
     /* ---------------- UI ---------------- */
     Box(modifier = Modifier.fillMaxSize()) {
-        // Sfondo animato
         AnimatedWaveBackground(
             primaryColor = Color(0xFF4CAF50),
             secondaryColor = Color(0xFF2EA333)
@@ -359,7 +358,6 @@ fun AnimatedProfileAvatar(
         modifier = modifier.size(140.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Anello esterno animato
         Canvas(modifier = Modifier.size(140.dp)) {
             val strokeWidth = 6f
             val radius = size.minDimension / 2 - strokeWidth
@@ -381,7 +379,6 @@ fun AnimatedProfileAvatar(
             }
         }
         
-        // Cerchio avatar interno
         Box(
             modifier = Modifier
                 .size(120.dp)

@@ -38,14 +38,14 @@ fun SpotDetailScreen(
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     
-    // Stati per la modifica della descrizione
+    // Desc Edit States
     var showEditDialog by remember { mutableStateOf(false) }
     var editedDescription by remember { mutableStateOf("") }
     
-    // Stati per la conferma eliminazione
+    // Delete confirm stats
     var showDeleteDialog by remember { mutableStateOf(false) }
     
-    // Carica i dati dello spot
+    // Spot Data
     LaunchedEffect(spotId) {
         try {
             val doc = db.collection("spots").document(spotId).get().await()
@@ -150,7 +150,6 @@ fun SpotDetailScreen(
         }
     }
     
-    // Dialog per modificare la descrizione
     if (showEditDialog && spot != null) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
@@ -196,7 +195,6 @@ fun SpotDetailScreen(
         )
     }
     
-    // Dialog per confermare l'eliminazione
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -254,7 +252,6 @@ fun SpotDetailContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Foto
         if (spot.imageId.isNotBlank()) {
             val imageUrl = RetrofitInstance.imageUrl(spot.imageId)
             Card(
@@ -272,7 +269,6 @@ fun SpotDetailContent(
             }
         }
         
-        // 3. Specie
         DetailSection(title = "Species") {
             Text(
                 text = spot.speciesLabel,
@@ -281,7 +277,6 @@ fun SpotDetailContent(
             )
         }
         
-        // 2. Descrizione
         if (spot.description.isNotBlank()) {
             DetailSection(title = "Description") {
                 Text(
@@ -291,7 +286,6 @@ fun SpotDetailContent(
             }
         }
         
-        // 4. Timestamp
         DetailSection(title = "Date & Time") {
             Text(
                 text = dateText,
@@ -299,7 +293,6 @@ fun SpotDetailContent(
             )
         }
         
-        // Location
         DetailSection(title = "Location") {
             Text(
                 text = spot.locationName,
@@ -307,7 +300,6 @@ fun SpotDetailContent(
             )
         }
         
-        // 5. Taxonomy
         if (spot.speciesTaxonomy.isNotEmpty()) {
             DetailSection(title = "Taxonomy") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

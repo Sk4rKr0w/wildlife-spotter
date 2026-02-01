@@ -7,9 +7,9 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.location.Geocoder
 import android.util.Log
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -38,14 +38,15 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.tasks.await
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(onNavigateToHistory: () -> Unit) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    // ===== Stati contapassi =====
+    // ===== Step counter steps =====
     var totalSteps by remember { mutableStateOf(0) }
     var dailySteps by remember { mutableStateOf(0) }
     var lastSyncedSteps by remember { mutableStateOf(0) }
+    var totalStepsRemote by remember { mutableStateOf(0L) }
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd-MM-yyyy") }
     val todayKey = remember { LocalDate.now().format(dateFormatter) }
@@ -70,6 +71,13 @@ fun HomeScreen() {
                 if (remoteDaily > dailySteps) {
                     dailySteps = remoteDaily
                 }
+                val userDoc = db.collection("users")
+                    .document(userId)
+                    .get()
+                    .await()
+
+                totalStepsRemote = userDoc.getLong("totalSteps") ?: 0L
+
                 val pending = dailySteps - lastSyncedSteps
                 if (pending > 0) {
                     db.collection("users")
@@ -113,12 +121,12 @@ fun HomeScreen() {
     val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     val magnetSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
-    // ===== Parametri contapassi =====
+    // ===== Stepcounter params =====
     var lastStepTime by remember { mutableStateOf(0L) }
-    val stepThreshold = 13f
+    val stepThreshold = 12f
     val minStepInterval = 300L
 
-    // ===== Stati bussola =====
+    // ===== Compass states =====
     var azimuth by remember { mutableStateOf(0f) }
     var direction by remember { mutableStateOf("N") }
     val gravityValues = FloatArray(3)
@@ -126,7 +134,7 @@ fun HomeScreen() {
     val rotationMatrix = FloatArray(9)
     val orientationValues = FloatArray(3)
 
-    // ===== Stati posizione =====
+    // ===== Position States =====
     var latitude by remember { mutableStateOf(0.0) }
     var longitude by remember { mutableStateOf(0.0) }
     var address by remember { mutableStateOf("Unknown") }
@@ -306,7 +314,7 @@ fun HomeScreen() {
         }
     }
 
-    // ===== Recupera posizione =====
+    // ===== Gathering Position =====
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     LaunchedEffect(Unit) {
@@ -360,13 +368,11 @@ fun HomeScreen() {
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Sfondo animato con onde
         AnimatedWaveBackground(
             primaryColor = Color(0xFF4CAF50),
             secondaryColor = Color(0xFF2EA333)
         )
 
-        // Particelle fluttuanti
         FloatingParticles(particleCount = 15)
 
         Column(
@@ -424,29 +430,10 @@ fun HomeScreen() {
                             )
                         }
 
-                    IconButton(
-                        onClick = {
-                                dailySteps = 0
-                                lastSyncedSteps = 0
-                                val sharedPreferences = context.getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
-                                sharedPreferences.edit {
-                                    putInt("dailySteps_$todayKey", dailySteps)
-                                    putInt("lastSynced_$todayKey", lastSyncedSteps)
-                                }
-                                Toast.makeText(context, "Steps reset!", Toast.LENGTH_SHORT).show()
-                            }
-                        ) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Reset",
-                                tint = Color(0xFFFFC107)
-                            )
-                        }
                     }
 
                     Spacer(Modifier.height(24.dp))
 
-                    // Indicatore circolare animato
                     CircularStepIndicator(
                         currentSteps = dailySteps,
                         goalSteps = 10000,
@@ -455,14 +442,56 @@ fun HomeScreen() {
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Grafico a onde
                     WaveActivityGraph()
+                }
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+                    .clickable { onNavigateToHistory() },
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF2D3E50).copy(alpha = 0.85f)
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.align(Alignment.TopStart),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.ShowChart,
+                            contentDescription = null,
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Total Steps",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Text(
+                        totalStepsRemote.toString(),
+                        color = Color(0xFF4CAF50),
+                        fontSize = 48.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Card bussola con canvas animato
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -497,12 +526,10 @@ fun HomeScreen() {
 
                     Spacer(Modifier.height(24.dp))
 
-                    // Bussola animata
                     AnimatedCompass(azimuth = azimuth, size = 200f)
 
                     Spacer(Modifier.height(20.dp))
 
-                    // Info direzione
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -544,7 +571,6 @@ fun HomeScreen() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Card posizione
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -578,7 +604,6 @@ fun HomeScreen() {
 
                     Spacer(Modifier.height(20.dp))
 
-                    // Indirizzo
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -602,7 +627,6 @@ fun HomeScreen() {
 
                     Spacer(Modifier.height(12.dp))
 
-                    // Coordinate
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -90,7 +90,7 @@ fun SignUp(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
 
-            // ----- Contenuto principale -----
+            // ----- Main Content -----
             Column(modifier = Modifier.padding(top = 130.dp)) {
                 when (step) {
                     0 -> EmailStep(
@@ -118,7 +118,7 @@ fun SignUp(
                 }
             }
 
-            // ----- Dots + Button in basso -----
+            // ----- Dots -----
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -152,7 +152,6 @@ fun SignUp(
                             2 -> {
                                 if (authViewModel.password.isBlank() || authViewModel.password != authViewModel.confirmPassword || !acceptedTerms) passwordError = true
                                 else {
-                                    // TODO: ASPETTARE IL BACKEND PER COMPLETARE SIGN-UP
                                     onSignUpClick()
                                 }
                             }

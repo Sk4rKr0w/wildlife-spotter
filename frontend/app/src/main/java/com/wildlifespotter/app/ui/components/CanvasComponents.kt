@@ -35,7 +35,7 @@ fun AnimatedWaveBackground(
         val width = size.width
         val height = size.height
         
-        // Disegna 3 onde sovrapposte
+        // 3 overlapping waves
         for (i in 0..2) {
             val path = Path()
             val amplitude = height * 0.08f * (i + 1)
@@ -131,7 +131,7 @@ fun AnimatedCompass(
         val center = Offset(this.size.width / 2, this.size.height / 2)
         val radius = this.size.minDimension / 2
         
-        // Cerchio esterno
+        // Outside Circle
         drawCircle(
             color = Color(0xFF374B5E),
             radius = radius,
@@ -139,7 +139,7 @@ fun AnimatedCompass(
             style = Fill
         )
         
-        // Cerchio interno
+        // Inner circle
         drawCircle(
             color = Color(0xFF2D3E50),
             radius = radius * 0.85f,
@@ -147,7 +147,7 @@ fun AnimatedCompass(
             style = Fill
         )
         
-        // Direzioni cardinali
+        // Directions
         val directions = listOf("N", "E", "S", "W")
         directions.forEachIndexed { index, direction ->
             val angle = index * 90f
@@ -176,7 +176,7 @@ fun AnimatedCompass(
             }
         }
         
-        // Ago della bussola
+        // Compass stick
         rotate(animatedAzimuth, center) {
             val arrowPath = Path().apply {
                 moveTo(center.x, center.y - radius * 0.6f)
@@ -191,7 +191,7 @@ fun AnimatedCompass(
                 color = Color(0xFFE53935)
             )
             
-            // Parte posteriore dell'ago
+            // Compass BackPath
             val backPath = Path().apply {
                 moveTo(center.x, center.y + radius * 0.6f)
                 lineTo(center.x - 10f, center.y - 10f)
@@ -206,7 +206,7 @@ fun AnimatedCompass(
             )
         }
         
-        // Centro
+        // Center
         drawCircle(
             color = Color(0xFF4CAF50),
             radius = 12f,
@@ -236,7 +236,7 @@ fun CircularStepIndicator(
         val center = Offset(this.size.width / 2, this.size.height / 2)
         val radius = (this.size.minDimension - strokeWidth) / 2
         
-        // Cerchio di sfondo
+        // Background circle
         drawCircle(
             color = backgroundColor,
             radius = radius + strokeWidth / 2,
@@ -244,7 +244,7 @@ fun CircularStepIndicator(
             style = Stroke(width = strokeWidth)
         )
         
-        // Arco di progresso
+        // Progress
         val sweepAngle = 360f * animatedProgress
         drawArc(
             color = primaryColor,

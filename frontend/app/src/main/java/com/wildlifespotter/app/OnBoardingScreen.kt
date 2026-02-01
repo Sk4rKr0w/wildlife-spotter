@@ -35,7 +35,6 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
             )
     ) {
 
-        // Logo in alto a destra
         Image(
             painter = painterResource(id = R.drawable.whitelogo),
             contentDescription = "Logo",
@@ -43,10 +42,9 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
                 .width(187.dp)
                 .height(115.dp)
                 .align(Alignment.TopEnd)
-                .padding(16.dp)  // distanza dai bordi
+                .padding(16.dp)
         )
 
-        // Colonna principale centrata
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -83,7 +81,6 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
                 }
             }
 
-            // Puntini indicatori
             HorizontalPagerIndicator(
                 pagerState = pagerState,
                 activeColor = Color(0xFF2EA333),

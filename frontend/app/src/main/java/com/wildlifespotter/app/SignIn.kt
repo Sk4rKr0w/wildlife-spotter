@@ -71,7 +71,6 @@ fun SignIn(
             )
     ) {
 
-        // Logo in alto a destra
         Image(
             painter = painterResource(id = R.drawable.whitelogo),
             contentDescription = "Logo",
@@ -79,7 +78,7 @@ fun SignIn(
                 .width(187.dp)
                 .height(115.dp)
                 .align(Alignment.TopEnd)
-                .padding(16.dp)  // distanza dai bordi
+                .padding(16.dp)
         )
 
         Column(

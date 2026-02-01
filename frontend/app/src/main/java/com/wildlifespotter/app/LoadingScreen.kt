@@ -20,7 +20,6 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun LoadingScreen(onLoadingFinished: () -> Unit) {
-    // Mostra il contenuto
     Box(
         modifier = Modifier
             .fillMaxSize()
