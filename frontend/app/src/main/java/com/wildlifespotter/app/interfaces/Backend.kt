@@ -15,6 +15,7 @@ import retrofit2.http.Body
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 import com.google.gson.annotations.SerializedName
+import retrofit2.http.DELETE
 
 data class UploadResponse(val id: String)
 
@@ -31,6 +32,9 @@ interface BackendApi {
         @Path("id") id: String,
         @Query("country") country: String? = null
     ): IdentifyResponse
+
+    @DELETE("images/{id}")
+    suspend fun deleteImage(@Path("id") id: String)
 }
 
 object RetrofitInstance {

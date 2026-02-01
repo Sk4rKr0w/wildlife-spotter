@@ -189,6 +189,33 @@ app.get("/images/:id/identify", checkAuth, async (req, res) => {
   }
 });
 
+app.delete("/images/:id", checkAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = req.app.locals.db;
+    const row = db
+      .prepare("SELECT filename FROM images WHERE id = ?")
+      .get(id);
+
+    if (!row) {
+      res.status(404).json({ error: "Image not found" });
+      return;
+    }
+
+    const filePath = path.join(UPLOADS_DIR, row.filename);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    db.prepare("DELETE FROM images WHERE id = ?").run(id);
+
+    res.status(200).json({ message: "Image deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete image" });
+  }
+});
+
 app.get("/health", checkAuth, (req, res) => {
   res.json({ status: "ok" });
 });
