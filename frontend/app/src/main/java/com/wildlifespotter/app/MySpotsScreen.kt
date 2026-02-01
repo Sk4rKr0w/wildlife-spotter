@@ -69,7 +69,8 @@ data class UserSpot(
     val locationName: String,
     val imageId: String,
     val userId: String,
-    val timestamp: Timestamp?
+    val timestamp: Timestamp?,
+    val dailySteps: Long = 0L
 )
 
 @Composable
@@ -120,7 +121,8 @@ fun MySpotsScreen(
                     locationName = doc.getString("location_name") ?: "Unknown location",
                     imageId = doc.getString("image_id") ?: "",
                     userId = userId,
-                    timestamp = doc.getTimestamp("timestamp")
+                    timestamp = doc.getTimestamp("timestamp"),
+                    dailySteps = doc.getLong("daily_steps") ?: 0L
                 )
             }.sortedByDescending { it.timestamp?.seconds ?: 0L }
         } catch (e: Exception) {

@@ -53,6 +53,8 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
@@ -383,6 +385,19 @@ suspend fun uploadSpotWithBytes(
         val label = annotation?.label?.takeIf { it.isNotBlank() } ?: (if(species.isBlank()) "Unknown Species" else species)
 
         val geohash = GeoFireUtils.getGeoHashForLocation(GeoLocation(latitude, longitude))
+
+        // Daily steps from firestore
+        val todayKey = LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"))
+        val dailySteps = if (userId != null) {
+            db.collection("users")
+                .document(userId)
+                .collection("steps")
+                .document(todayKey)
+                .get()
+                .await()
+                .getLong("dailySteps") ?: 0L
+        } else 0L
+
         val spotData = hashMapOf(
             "species" to mapOf("label" to label, "taxonomy" to taxonomyToMap(annotation?.taxonomy)),
             "description" to description,
@@ -393,6 +408,7 @@ suspend fun uploadSpotWithBytes(
             "timestamp" to FieldValue.serverTimestamp(),
             "image_id" to imageId,
             "user_id" to (userId ?: "anonymous"),
+            "daily_steps" to dailySteps,
             "sensor_data" to mapOf("steps_count" to steps, "compass_azimuth" to azimuth)
         )
 

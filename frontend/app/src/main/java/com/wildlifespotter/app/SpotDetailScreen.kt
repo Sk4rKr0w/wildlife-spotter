@@ -75,7 +75,8 @@ fun SpotDetailScreen(
                 locationName = doc.getString("location_name") ?: "Unknown location",
                 imageId = doc.getString("image_id") ?: "",
                 userId = doc.getString("user_id") ?: "",
-                timestamp = doc.getTimestamp("timestamp")
+                timestamp = doc.getTimestamp("timestamp"),
+                dailySteps = doc.getLong("daily_steps") ?: 0L
             )
             editedDescription = spot?.description ?: ""
         } catch (e: Exception) {
@@ -310,7 +311,16 @@ fun SpotDetailContent(
                 style = MaterialTheme.typography.bodyLarge
             )
         }
-        
+
+        if (spot.dailySteps > 0L) {
+            DetailSection(title = "Daily Steps at Spot") {
+                Text(
+                    text = "${spot.dailySteps} steps",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+        }
+
         DetailSection(title = "Location") {
             Text(
                 text = spot.locationName,
