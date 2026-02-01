@@ -33,7 +33,7 @@ fun StepsHistoryScreen(onBackClick: () -> Unit) {
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
     var historySteps by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoadingSteps by remember { mutableStateOf(true) }
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd-MM-yyyy") }
     val todayKey = remember { LocalDate.now().format(dateFormatter) }
@@ -51,16 +51,19 @@ fun StepsHistoryScreen(onBackClick: () -> Unit) {
                 val map = mutableMapOf<String, Long>()
                 for (doc in snapshot.documents) {
                     val steps = doc.getLong("dailySteps") ?: 0L
-                    map[doc.id] = steps
+                    if (steps > 0) {
+                        map[doc.id] = steps
+                    }
                 }
                 historySteps = map
+                Log.d("StepsHistory", "Loaded ${map.size} days with steps")
             } catch (e: Exception) {
                 Log.e("StepsHistory", "Failed to load history", e)
             } finally {
-                isLoading = false
+                isLoadingSteps = false
             }
         } else {
-            isLoading = false
+            isLoadingSteps = false
         }
     }
 
@@ -118,7 +121,7 @@ fun StepsHistoryScreen(onBackClick: () -> Unit) {
                     .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
-                if (isLoading) {
+                if (isLoadingSteps) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center

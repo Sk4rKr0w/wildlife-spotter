@@ -46,7 +46,6 @@ fun LoadingScreen(onLoadingFinished: () -> Unit) {
         }
     }
 
-    // Avvia un delay di 2 secondi per il loading e poi chiama il callback
     LaunchedEffect(Unit) {
         delay(2000L)
         onLoadingFinished()

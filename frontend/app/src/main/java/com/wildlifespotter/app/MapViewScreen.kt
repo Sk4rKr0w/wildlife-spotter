@@ -48,13 +48,11 @@ fun MapViewScreen(
     val auth = remember { FirebaseAuth.getInstance() }
     val db = remember { FirebaseFirestore.getInstance() }
 
-    // Stati
     var userLocation by remember { mutableStateOf<GeoPoint?>(null) }
     var spots by remember { mutableStateOf<List<SpotLocation>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Configurazione OSMDroid
     LaunchedEffect(Unit) {
         Configuration.getInstance().load(
             context,
@@ -72,7 +70,6 @@ fun MapViewScreen(
         }
     }
 
-    // Ciclo di vita della mappa
     val lifecycleObserver = remember {
         LifecycleEventObserver { _, event ->
             when (event) {
@@ -91,12 +88,12 @@ fun MapViewScreen(
         }
     }
 
-    /* ---------------- POSIZIONE REALTIME ---------------- */
+    /* ---------------- Realtime location ---------------- */
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     DisposableEffect(Unit) {
         val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY, 2000L // aggiornamento ogni 2 secondi
+            Priority.PRIORITY_HIGH_ACCURACY, 2000L
         ).setMinUpdateDistanceMeters(1f)
             .build()
 
@@ -116,7 +113,7 @@ fun MapViewScreen(
         }
     }
 
-    /* ---------------- CARICAMENTO SPOTS ---------------- */
+    /* ---------------- SPOTS  ---------------- */
     LaunchedEffect(Unit) {
         try {
             val userId = auth.currentUser?.uid
@@ -158,11 +155,11 @@ fun MapViewScreen(
         }
     }
 
-    /* ---------------- AGGIORNA MARKERS ---------------- */
+    /* ---------------- Updating Markers ---------------- */
     LaunchedEffect(userLocation, spots) {
         mapView.overlays.clear()
 
-        // Marker utente
+        // User Marker
         userLocation?.let { loc ->
             val userMarker = Marker(mapView).apply {
                 position = loc
@@ -177,7 +174,7 @@ fun MapViewScreen(
             mapView.controller.setCenter(loc)
         }
 
-        // Marker spots
+        // Spot Marker
         spots.forEach { spot ->
             val marker = Marker(mapView).apply {
                 position = GeoPoint(spot.latitude, spot.longitude)

@@ -256,7 +256,6 @@ fun CircularStepIndicator(
             style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
         )
         
-        // Testo centrale
         drawContext.canvas.nativeCanvas.apply {
             val textPaint = android.graphics.Paint().apply {
                 color = android.graphics.Color.WHITE
@@ -321,14 +320,12 @@ fun WaveActivityGraph(
             }
         }
         
-        // Linea principale
         drawPath(
             path = path,
             color = color,
             style = Stroke(width = 4f, cap = StrokeCap.Round)
         )
         
-        // Area sottostante
         val filledPath = Path().apply {
             addPath(path)
             lineTo(width, height)
