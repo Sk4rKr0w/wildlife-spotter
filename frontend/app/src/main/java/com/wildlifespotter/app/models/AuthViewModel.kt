@@ -361,6 +361,17 @@ class AuthViewModel : ViewModel() {
     fun resetRegistrationState() {
         registrationState = RegistrationState.IDLE
     }
+
+    fun isPasswordStrong(password: String): Boolean {
+        val minLength = 8
+        val hasUpperCase = password.any { it.isUpperCase() }
+        val hasLowerCase = password.any { it.isLowerCase() }
+        val hasDigit = password.any { it.isDigit() }
+        val hasSpecial = password.any { !it.isLetterOrDigit() }
+        return password.length >= minLength && hasUpperCase && hasLowerCase && hasDigit && hasSpecial
+    }
+
+
 }
 
 enum class RegistrationState {

@@ -228,25 +228,42 @@ fun HomeScreen(
 
     // ===== Gathering Position =====
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    var showLocationAlert by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         try {
             fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                loc?.let {
-                    latitude = it.latitude
-                    longitude = it.longitude
+                if (loc != null) {
+                    latitude = loc.latitude
+                    longitude = loc.longitude
 
                     val geocoder = Geocoder(context)
                     val list = geocoder.getFromLocation(latitude, longitude, 1)
                     if (!list.isNullOrEmpty()) {
                         address = "${list[0].locality ?: ""}, ${list[0].countryName ?: ""}"
                     }
+                } else {
+                    showLocationAlert = true
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
+
+    if (showLocationAlert) {
+        AlertDialog(
+            onDismissRequest = { showLocationAlert = false },
+            title = { Text("Location Required") },
+            text = { Text("Be sure to turn on your location") },
+            confirmButton = {
+                Button(onClick = { showLocationAlert = false }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
 
     // ===== UI Compose =====
     val backgroundGradient = Brush.verticalGradient(

@@ -253,6 +253,8 @@ fun SignIn(
                 Text("Sign in with Google")
             }
 
+            Spacer(modifier = Modifier.height(24.dp))
+
             if (authViewModel.errorMessage != null) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(

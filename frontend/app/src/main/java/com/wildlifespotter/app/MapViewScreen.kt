@@ -52,6 +52,7 @@ fun MapViewScreen(
     var spots by remember { mutableStateOf<List<SpotLocation>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showLocationAlert by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         Configuration.getInstance().load(
@@ -92,6 +93,15 @@ fun MapViewScreen(
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     DisposableEffect(Unit) {
+        fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+            if (loc != null) {
+                userLocation = GeoPoint(loc.latitude, loc.longitude)
+            } else {
+                showLocationAlert = true
+                userLocation = GeoPoint(41.9028, 12.4964)
+            }
+        }
+
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY, 2000L
         ).setMinUpdateDistanceMeters(1f)
@@ -225,6 +235,19 @@ fun MapViewScreen(
                     color = Color.Red
                 )
                 else -> AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+            }
+
+            if (showLocationAlert) {
+                AlertDialog(
+                    onDismissRequest = { showLocationAlert = false },
+                    title = { Text("Location Required") },
+                    text = { Text("Be sure to turn on your location, set by default on: Rome") },
+                    confirmButton = {
+                        Button(onClick = { showLocationAlert = false }) {
+                            Text("OK")
+                        }
+                    }
+                )
             }
         }
     }

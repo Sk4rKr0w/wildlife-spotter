@@ -153,6 +153,7 @@ fun SignUp(
                         onTermsChange = { acceptedTerms = it },
                         error = passwordError
                     )
+
                 }
             }
 
@@ -164,6 +165,10 @@ fun SignUp(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 DotsIndicator(currentStep = step)
+                authViewModel.errorMessage?.let { msg ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(msg, color = Color.Red, style = MaterialTheme.typography.bodySmall)
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 PrimaryButton(
                     text = if (step < 2) "Continue" else "Sign Up",
@@ -197,10 +202,6 @@ fun SignUp(
                     }
                 )
 
-                authViewModel.errorMessage?.let { msg ->
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(msg, color = Color.Red, style = MaterialTheme.typography.bodySmall)
-                }
             }
         }
     }
@@ -243,7 +244,7 @@ fun CountryStep(
             value = country,
             onValueChange = { },
             readOnly = true,
-            placeholder = { Text("Italy", color = Color.White.copy(alpha = 0.6f)) },
+            placeholder = { Text("Select your country", color = Color.White.copy(alpha = 0.6f)) },
             modifier = Modifier.fillMaxWidth().padding(top = 24.dp).menuAnchor(),
             singleLine = true,
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
