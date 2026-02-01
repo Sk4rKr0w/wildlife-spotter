@@ -27,9 +27,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.android.gms.location.LocationServices
 import com.wildlifespotter.app.ui.components.*
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import kotlin.math.sqrt
+import kotlinx.coroutines.tasks.await
 
 @Composable
 fun HomeScreen() {
@@ -38,12 +44,66 @@ fun HomeScreen() {
 
     // ===== Stati contapassi =====
     var totalSteps by remember { mutableStateOf(0) }
-    var previousTotalSteps: Int by remember { mutableStateOf(0) }
+    var dailySteps by remember { mutableStateOf(0) }
+    var lastSyncedSteps by remember { mutableStateOf(0) }
+
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd-MM-yyyy") }
+    val todayKey = remember { LocalDate.now().format(dateFormatter) }
+
+    val auth = remember { FirebaseAuth.getInstance() }
+    val db = remember { FirebaseFirestore.getInstance() }
 
     LaunchedEffect(Unit) {
         val sharedPreferences = context.getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
-        previousTotalSteps = sharedPreferences.getFloat("key1", 0f).toInt()
-        Log.d("HomeScreen", "Previous steps: $previousTotalSteps")
+        dailySteps = sharedPreferences.getInt("dailySteps_$todayKey", 0)
+        lastSyncedSteps = sharedPreferences.getInt("lastSynced_$todayKey", 0)
+        val userId = auth.currentUser?.uid
+        if (userId != null) {
+            try {
+                val doc = db.collection("users")
+                    .document(userId)
+                    .collection("steps")
+                    .document(todayKey)
+                    .get()
+                    .await()
+                val remoteDaily = doc.getLong("dailySteps")?.toInt() ?: 0
+                if (remoteDaily > dailySteps) {
+                    dailySteps = remoteDaily
+                }
+                val pending = dailySteps - lastSyncedSteps
+                if (pending > 0) {
+                    db.collection("users")
+                        .document(userId)
+                        .set(
+                            mapOf(
+                                "totalSteps" to FieldValue.increment(pending.toLong()),
+                                "stepsUpdatedAt" to FieldValue.serverTimestamp()
+                            ),
+                            com.google.firebase.firestore.SetOptions.merge()
+                        )
+                        .await()
+                    db.collection("users")
+                        .document(userId)
+                        .collection("steps")
+                        .document(todayKey)
+                        .set(
+                            mapOf(
+                                "dailySteps" to FieldValue.increment(pending.toLong()),
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            ),
+                            com.google.firebase.firestore.SetOptions.merge()
+                        )
+                        .await()
+                    lastSyncedSteps = dailySteps
+                    sharedPreferences.edit {
+                        putInt("lastSynced_$todayKey", lastSyncedSteps)
+                        putInt("dailySteps_$todayKey", dailySteps)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("HomeScreen", "Failed to sync pending steps on start", e)
+            }
+        }
     }
 
     val sensorManager = remember {
@@ -84,6 +144,7 @@ fun HomeScreen() {
                         val now = System.currentTimeMillis()
                         if (accel > stepThreshold && now - lastStepTime > minStepInterval) {
                             totalSteps += 1
+                            dailySteps += 1
                             lastStepTime = now
                         }
 
@@ -116,7 +177,134 @@ fun HomeScreen() {
         }
     }
 
-    val currentSteps = (totalSteps - previousTotalSteps).coerceAtLeast(0)
+    LaunchedEffect(Unit) {
+        val sharedPreferences = context.getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
+        val lastDayKey = sharedPreferences.getString("lastDayKey", null)
+        if (lastDayKey != null && lastDayKey != todayKey) {
+            val prevDaily = sharedPreferences.getInt("dailySteps_$lastDayKey", 0)
+            val prevSynced = sharedPreferences.getInt("lastSynced_$lastDayKey", 0)
+            val delta = prevDaily - prevSynced
+            val userId = auth.currentUser?.uid
+            if (delta > 0 && userId != null) {
+                try {
+                    db.collection("users")
+                        .document(userId)
+                        .set(
+                            mapOf(
+                                "totalSteps" to FieldValue.increment(delta.toLong()),
+                                "stepsUpdatedAt" to FieldValue.serverTimestamp()
+                            ),
+                            com.google.firebase.firestore.SetOptions.merge()
+                        )
+                        .await()
+                    db.collection("users")
+                        .document(userId)
+                        .collection("steps")
+                        .document(lastDayKey)
+                        .set(
+                            mapOf(
+                                "dailySteps" to FieldValue.increment(delta.toLong()),
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            ),
+                            com.google.firebase.firestore.SetOptions.merge()
+                        )
+                        .await()
+                } catch (e: Exception) {
+                    Log.e("HomeScreen", "Failed to sync previous day steps", e)
+                }
+            }
+            dailySteps = 0
+            lastSyncedSteps = 0
+            sharedPreferences.edit {
+                putInt("dailySteps_$todayKey", 0)
+                putInt("lastSynced_$todayKey", 0)
+            }
+        }
+        sharedPreferences.edit { putString("lastDayKey", todayKey) }
+    }
+
+    LaunchedEffect(dailySteps) {
+        val sharedPreferences = context.getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
+        sharedPreferences.edit {
+            putInt("dailySteps_$todayKey", dailySteps)
+            putInt("lastSynced_$todayKey", lastSyncedSteps)
+        }
+        val delta = dailySteps - lastSyncedSteps
+        if (delta < 25) return@LaunchedEffect
+        val userId = auth.currentUser?.uid ?: return@LaunchedEffect
+        val today = todayKey
+        try {
+            db.collection("users")
+                .document(userId)
+                .set(
+                    mapOf(
+                        "totalSteps" to FieldValue.increment(delta.toLong()),
+                        "stepsUpdatedAt" to FieldValue.serverTimestamp()
+                    ),
+                    com.google.firebase.firestore.SetOptions.merge()
+                )
+                .await()
+
+            db.collection("users")
+                .document(userId)
+                .collection("steps")
+                .document(today)
+                .set(
+                    mapOf(
+                        "dailySteps" to FieldValue.increment(delta.toLong()),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    ),
+                    com.google.firebase.firestore.SetOptions.merge()
+                )
+                .await()
+
+            lastSyncedSteps = dailySteps
+            sharedPreferences.edit {
+                putInt("lastSynced_$today", lastSyncedSteps)
+            }
+        } catch (e: Exception) {
+            Log.e("HomeScreen", "Failed to sync steps", e)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            val delta = dailySteps - lastSyncedSteps
+            if (delta <= 0) return@onDispose
+            val userId = auth.currentUser?.uid ?: return@onDispose
+            try {
+                db.collection("users")
+                    .document(userId)
+                    .set(
+                        mapOf(
+                            "totalSteps" to FieldValue.increment(delta.toLong()),
+                            "stepsUpdatedAt" to FieldValue.serverTimestamp()
+                        ),
+                        com.google.firebase.firestore.SetOptions.merge()
+                    )
+                    .addOnSuccessListener { }
+                db.collection("users")
+                    .document(userId)
+                    .collection("steps")
+                    .document(todayKey)
+                    .set(
+                        mapOf(
+                            "dailySteps" to FieldValue.increment(delta.toLong()),
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        ),
+                        com.google.firebase.firestore.SetOptions.merge()
+                    )
+                    .addOnSuccessListener { }
+                val sharedPreferences = context.getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
+                sharedPreferences.edit {
+                    putInt("dailySteps_$todayKey", dailySteps)
+                    putInt("lastSynced_$todayKey", dailySteps)
+                }
+            } catch (e: Exception) {
+                Log.e("HomeScreen", "Failed to sync steps on dispose", e)
+            }
+        }
+    }
 
     // ===== Recupera posizione =====
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
@@ -137,6 +325,32 @@ fun HomeScreen() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val userId = auth.currentUser?.uid ?: return@LaunchedEffect
+        try {
+            val doc = db.collection("users")
+                .document(userId)
+                .collection("steps")
+                .document(todayKey)
+                .get()
+                .await()
+            val remoteDaily = doc.getLong("dailySteps")?.toInt() ?: 0
+            if (remoteDaily > dailySteps) {
+                dailySteps = remoteDaily
+                if (lastSyncedSteps < dailySteps) {
+                    lastSyncedSteps = dailySteps
+                }
+                val sharedPreferences = context.getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
+                sharedPreferences.edit {
+                    putInt("dailySteps_$todayKey", dailySteps)
+                    putInt("lastSynced_$todayKey", lastSyncedSteps)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("HomeScreen", "Failed to load daily steps", e)
         }
     }
 
@@ -210,10 +424,15 @@ fun HomeScreen() {
                             )
                         }
 
-                        IconButton(
-                            onClick = {
-                                previousTotalSteps = totalSteps
-                                saveData(context, previousTotalSteps)
+                    IconButton(
+                        onClick = {
+                                dailySteps = 0
+                                lastSyncedSteps = 0
+                                val sharedPreferences = context.getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
+                                sharedPreferences.edit {
+                                    putInt("dailySteps_$todayKey", dailySteps)
+                                    putInt("lastSynced_$todayKey", lastSyncedSteps)
+                                }
                                 Toast.makeText(context, "Steps reset!", Toast.LENGTH_SHORT).show()
                             }
                         ) {
@@ -229,7 +448,7 @@ fun HomeScreen() {
 
                     // Indicatore circolare animato
                     CircularStepIndicator(
-                        currentSteps = currentSteps,
+                        currentSteps = dailySteps,
                         goalSteps = 10000,
                         size = 150f
                     )
@@ -425,13 +644,6 @@ fun HomeScreen() {
 
             Spacer(modifier = Modifier.height(40.dp))
         }
-    }
-}
-
-private fun saveData(context: Context, previousTotalSteps: Int) {
-    val sharedPreferences = context.getSharedPreferences("myPrefs", Context.MODE_PRIVATE)
-    sharedPreferences.edit {
-        putFloat("key1", previousTotalSteps.toFloat())
     }
 }
 
