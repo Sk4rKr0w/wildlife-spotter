@@ -141,6 +141,10 @@ class AuthViewModel : ViewModel() {
             errorMessage = "Password not corresponding"
             return
         }
+        if (!isPasswordStrong(password)) {
+            errorMessage = "Password too weak"
+            return
+        }
         val countryCode = toAlpha3Country(countryName)
         if (countryCode == null) {
             errorMessage = "Invalid country"

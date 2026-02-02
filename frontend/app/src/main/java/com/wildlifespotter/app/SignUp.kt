@@ -147,6 +147,7 @@ fun SignUp(
                     2 -> PasswordStep(
                         authViewModel.password,
                         authViewModel.confirmPassword,
+                        authViewModel.isPasswordStrong(authViewModel.password),
                         acceptedTerms,
                         onPasswordChange = { authViewModel.password = it },
                         onConfirmPasswordChange = { authViewModel.confirmPassword = it },
@@ -175,7 +176,12 @@ fun SignUp(
                     enabled = when (step) {
                         0 -> authViewModel.email.isNotBlank() && authViewModel.email.contains("@") && !emailError
                         1 -> authViewModel.countryName.isNotBlank() && !countryError
-                        2 -> authViewModel.password.isNotBlank() && authViewModel.confirmPassword.isNotBlank() && authViewModel.password == authViewModel.confirmPassword && acceptedTerms && !passwordError
+                        2 -> authViewModel.password.isNotBlank() &&
+                            authViewModel.confirmPassword.isNotBlank() &&
+                            authViewModel.password == authViewModel.confirmPassword &&
+                            authViewModel.isPasswordStrong(authViewModel.password) &&
+                            acceptedTerms &&
+                            !passwordError
                         else -> false
                     },
                     onClick = {
@@ -193,7 +199,13 @@ fun SignUp(
                                 }
                             }
                             2 -> {
-                                if (authViewModel.password.isBlank() || authViewModel.password != authViewModel.confirmPassword || !acceptedTerms) passwordError = true
+                                if (authViewModel.password.isBlank() ||
+                                    authViewModel.password != authViewModel.confirmPassword ||
+                                    !authViewModel.isPasswordStrong(authViewModel.password) ||
+                                    !acceptedTerms
+                                ) {
+                                    passwordError = true
+                                }
                                 else {
                                     authViewModel.register()
                                 }
@@ -282,6 +294,7 @@ fun CountryStep(
 fun PasswordStep(
     password: String,
     confirmPassword: String,
+    passwordStrong: Boolean,
     acceptedTerms: Boolean,
     onPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
@@ -348,7 +361,14 @@ fun PasswordStep(
             unfocusedPlaceholderColor = Color.White.copy(alpha = 0.6f)
         )
     )
-    if (error) Text("Passwords must match", color = Color.Red, style = MaterialTheme.typography.bodySmall)
+    if (error) Text("Passwords must match and be strong", color = Color.Red, style = MaterialTheme.typography.bodySmall)
+    if (password.isNotBlank() && !passwordStrong) {
+        Text(
+            "Min 8 chars, upper, lower, number, special",
+            color = Color.Red,
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
 
     Spacer(modifier = Modifier.height(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
