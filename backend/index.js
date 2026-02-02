@@ -5,7 +5,6 @@ const path = require("path");
 const https = require("https");
 const multer = require("multer");
 const Database = require("better-sqlite3");
-
 const checkAuth = require("./middleware/auth");
 
 const app = express();
@@ -53,8 +52,8 @@ function initDb() {
   return db;
 }
 
-function sha256(buffer) {
-  return crypto.createHash("sha256").update(buffer).digest("hex");
+function generateRandomId() {
+  return crypto.randomBytes(32).toString("hex");
 }
 
 function safeExtension(originalName, mimeType) {
@@ -77,20 +76,18 @@ app.post("/images", checkAuth, upload.single("image"), (req, res) => {
     }
 
     const { buffer, originalname, mimetype } = req.file;
-    const id = sha256(buffer);
+    
+    const id = generateRandomId();
     const ext = safeExtension(originalname, mimetype);
     const filename = `${id}${ext}`;
     const filePath = path.join(UPLOADS_DIR, filename);
 
     const db = req.app.locals.db;
-    const existing = db.prepare("SELECT id FROM images WHERE id = ?").get(id);
-
-    if (!existing) {
-      fs.writeFileSync(filePath, buffer);
-      db.prepare(
-        "INSERT INTO images (id, filename, mime, created_at) VALUES (?, ?, ?, ?)"
-      ).run(id, filename, mimetype, new Date().toISOString());
-    }
+    fs.writeFileSync(filePath, buffer);
+    
+    db.prepare(
+      "INSERT INTO images (id, filename, mime, created_at) VALUES (?, ?, ?, ?)"
+    ).run(id, filename, mimetype, new Date().toISOString());
 
     res.status(201).json({ id });
   } catch (err) {
@@ -154,6 +151,7 @@ app.get("/images/:id/identify", checkAuth, async (req, res) => {
     }
 
     const buffer = await fs.promises.readFile(filePath);
+    
     const formData = new FormData();
     const blob = new Blob([buffer], {
       type: row.mime || "application/octet-stream",
