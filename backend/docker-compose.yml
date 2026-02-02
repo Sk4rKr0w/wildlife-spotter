@@ -16,8 +16,15 @@ services:
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       LE_DIR: /app/data/letsencrypt
       ANIMALDETECT_API_KEY: "${ANIMALDETECT_API_KEY:-}"
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      DB_NAME: "wildlife_spotter"
+      DB_USER: "wildlife"
+      DB_PASSWORD: "wildlife"
     volumes:
       - /opt/data:/app/data
+    depends_on:
+      - mysql
   certbot:
     build:
       context: .
@@ -31,3 +38,26 @@ services:
     volumes:
       - /opt/data:/app/data
     command: ["/app/letsencrypt-renew.sh"]
+  mysql:
+    image: mysql:latest
+    restart: always
+    environment:
+      MYSQL_DATABASE: "wildlife_spotter"
+      MYSQL_USER: "wildlife"
+      MYSQL_PASSWORD: "wildlife"
+      MYSQL_ROOT_PASSWORD: "Wj1YEb@fbMJ2tCn4MJRRq"
+    volumes:
+      - mysql_data:/var/lib/mysql
+  phpmyadmin:
+    image: phpmyadmin:latest
+    restart: always
+    environment:
+      PMA_HOST: "mysql"
+      PMA_PORT: "3306"
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+
+volumes:
+  mysql_data:

@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const multer = require("multer");
-const Database = require("better-sqlite3");
+const mysql = require("mysql2/promise");
 const checkAuth = require("./middleware/auth");
 
 const app = express();
@@ -15,7 +15,11 @@ const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
 
 const DATA_DIR = path.join(__dirname, "data");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
-const DB_PATH = path.join(DATA_DIR, "images.db");
+const DB_HOST = process.env.DB_HOST || "mysql";
+const DB_PORT = Number(process.env.DB_PORT || 3306);
+const DB_USER = process.env.DB_USER || "wildlife";
+const DB_PASSWORD = process.env.DB_PASSWORD || "wildlife";
+const DB_NAME = process.env.DB_NAME || "wildlife_spotter";
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -34,28 +38,33 @@ function ensureDirs() {
   }
 }
 
-function openDb() {
-  return new Database(DB_PATH);
-}
-
-function initDb() {
+async function initDb() {
   ensureDirs();
-  const db = openDb();
-  db.exec(
+  const pool = mysql.createPool({
+    host: DB_HOST,
+    port: DB_PORT,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    database: DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+  });
+
+  await pool.query(
     `CREATE TABLE IF NOT EXISTS images (
-      id TEXT PRIMARY KEY,
-      filename TEXT NOT NULL,
-      mime TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      user_id TEXT
+      id VARCHAR(64) PRIMARY KEY,
+      filename VARCHAR(255) NOT NULL,
+      mime VARCHAR(255) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      user_id VARCHAR(128)
     )`
   );
-  const columns = db.prepare("PRAGMA table_info(images)").all();
-  const hasUserId = columns.some((col) => col.name === "user_id");
-  if (!hasUserId) {
-    db.exec("ALTER TABLE images ADD COLUMN user_id TEXT");
-  }
-  return db;
+  await pool.query(
+    "ALTER TABLE images MODIFY created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+  );
+
+  return pool;
 }
 
 function generateRandomId() {
@@ -68,14 +77,11 @@ function safeExtension(originalName, mimeType) {
   if (mimeType === "image/jpeg") return ".jpg";
   if (mimeType === "image/png") return ".png";
   if (mimeType === "image/webp") return ".webp";
-  if (mimeType === "image/gif") return ".gif";
   return "";
 }
 
-app.post("/images", checkAuth, upload.single("image"), (req, res) => {
-  try {
-    console.log("Logged user:", req.user.email);
-    
+app.post("/images", checkAuth, upload.single("image"), async (req, res) => {
+  try {    
     if (!req.file) {
       res.status(400).json({ error: "Missing image file (field name: image)" });
       return;
@@ -91,9 +97,10 @@ app.post("/images", checkAuth, upload.single("image"), (req, res) => {
     const db = req.app.locals.db;
     fs.writeFileSync(filePath, buffer);
     
-    db.prepare(
-      "INSERT INTO images (id, filename, mime, created_at, user_id) VALUES (?, ?, ?, ?, ?)"
-    ).run(id, filename, mimetype, new Date().toISOString(), req.user.uid);
+    await db.execute(
+      "INSERT INTO images (id, filename, mime, created_at, user_id) VALUES (?, ?, ?, NOW(), ?)",
+      [id, filename, mimetype, req.user.uid]
+    );
 
     res.status(201).json({ id });
   } catch (err) {
@@ -102,13 +109,15 @@ app.post("/images", checkAuth, upload.single("image"), (req, res) => {
   }
 });
 
-app.get("/images/:id", (req, res) => {
+app.get("/images/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const db = req.app.locals.db;
-    const row = db
-      .prepare("SELECT filename, mime FROM images WHERE id = ?")
-      .get(id);
+    const [rows] = await db.execute(
+      "SELECT filename, mime FROM images WHERE id = ?",
+      [id]
+    );
+    const row = rows[0];
 
     if (!row) {
       res.status(404).json({ error: "Image not found" });
@@ -141,9 +150,11 @@ app.get("/images/:id/identify", checkAuth, async (req, res) => {
 
     const { id } = req.params;
     const db = req.app.locals.db;
-    const row = db
-      .prepare("SELECT filename, mime FROM images WHERE id = ?")
-      .get(id);
+    const [rows] = await db.execute(
+      "SELECT filename, mime FROM images WHERE id = ?",
+      [id]
+    );
+    const row = rows[0];
 
     if (!row) {
       res.status(404).json({ error: "Image not found" });
@@ -193,13 +204,15 @@ app.get("/images/:id/identify", checkAuth, async (req, res) => {
   }
 });
 
-app.delete("/images/:id", checkAuth, (req, res) => {
+app.delete("/images/:id", checkAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const db = req.app.locals.db;
-    const row = db
-      .prepare("SELECT filename, user_id FROM images WHERE id = ?")
-      .get(id);
+    const [rows] = await db.execute(
+      "SELECT filename, user_id FROM images WHERE id = ?",
+      [id]
+    );
+    const row = rows[0];
 
     if (!row) {
       res.status(404).json({ error: "Image not found" });
@@ -216,7 +229,7 @@ app.delete("/images/:id", checkAuth, (req, res) => {
       fs.unlinkSync(filePath);
     }
 
-    db.prepare("DELETE FROM images WHERE id = ?").run(id);
+    await db.execute("DELETE FROM images WHERE id = ?", [id]);
 
     res.status(200).json({ message: "Image deleted successfully" });
   } catch (err) {
@@ -229,30 +242,34 @@ app.get("/health", checkAuth, (req, res) => {
   res.json({ status: "ok" });
 });
 
-try {
-  const db = initDb();
-  app.locals.db = db;
-  if (
-    SSL_CERT_PATH &&
-    SSL_KEY_PATH &&
-    fs.existsSync(SSL_CERT_PATH) &&
-    fs.existsSync(SSL_KEY_PATH)
-  ) {
-    // Start HTTPS if certs are available
-    const sslOptions = {
-      cert: fs.readFileSync(SSL_CERT_PATH),
-      key: fs.readFileSync(SSL_KEY_PATH),
-    };
-    https.createServer(sslOptions, app).listen(PORT, () => {
-      console.log(`Backend listening on https://localhost:${PORT}`);
-    });
-  } else {
-    // Fallback to HTTP when no certs are present
-    app.listen(PORT, () => {
-      console.log(`Backend listening on http://localhost:${PORT}`);
-    });
+async function startServer() {
+  try {
+    const db = await initDb();
+    app.locals.db = db;
+    if (
+      SSL_CERT_PATH &&
+      SSL_KEY_PATH &&
+      fs.existsSync(SSL_CERT_PATH) &&
+      fs.existsSync(SSL_KEY_PATH)
+    ) {
+      // Start HTTPS if certs are available
+      const sslOptions = {
+        cert: fs.readFileSync(SSL_CERT_PATH),
+        key: fs.readFileSync(SSL_KEY_PATH),
+      };
+      https.createServer(sslOptions, app).listen(PORT, () => {
+        console.log(`Backend listening on https://localhost:${PORT}`);
+      });
+    } else {
+      // Fallback to HTTP when no certs are present
+      app.listen(PORT, () => {
+        console.log(`Backend listening on http://localhost:${PORT}`);
+      });
+    }
+  } catch (err) {
+    console.error("Failed to start server", err);
+    process.exit(1);
   }
-} catch (err) {
-  console.error("Failed to start server", err);
-  process.exit(1);
 }
+
+startServer();
