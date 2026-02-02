@@ -3,4 +3,10 @@
 
     <style name="Theme.WildLifeSpotter" parent="android:Theme.Material.Light.NoActionBar" />
 
+    <style name="Theme.WildLifeSpotter.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.WildLifeSpotter</item>
+    </style>
+
 </resources>
