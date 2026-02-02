@@ -212,6 +212,12 @@ fun MySpotsScreen(
                                     scope.launch {
                                         try {
                                             db.collection("spots").document(removedSpot.id).delete().await()
+
+                                            if (removedSpot.userId.isNotBlank()) {
+                                                db.collection("users").document(removedSpot.userId)
+                                                    .update("totalSpots", FieldValue.increment(-1))
+                                                    .await()
+                                            }
                                         } catch (e: Exception) {
                                             error = e.message ?: "Delete failed"
                                             spots = (listOf(removedSpot) + spots)
@@ -242,6 +248,13 @@ fun MySpotsScreen(
                                                     .document(removedSpot.id)
                                                     .set(restoreData)
                                                     .await()
+
+                                                if (removedSpot.userId.isNotBlank()) {
+                                                    db.collection("users").document(removedSpot.userId)
+                                                        .update("totalSpots", FieldValue.increment(1))
+                                                        .await()
+                                                }
+
                                                 spots = (listOf(removedSpot) + spots)
                                                     .sortedByDescending { it.timestamp?.seconds ?: 0L }
                                                 resetTokens[removedSpot.id] =

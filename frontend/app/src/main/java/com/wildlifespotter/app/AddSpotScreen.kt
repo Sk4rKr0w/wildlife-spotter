@@ -81,38 +81,11 @@ fun AddSpotScreen() {
     var longitude by remember { mutableDoubleStateOf(0.0) }
 
     // ---------- Sensors ----------
-    var currentSteps by remember { mutableFloatStateOf(0f) }
     var currentAzimuth by remember { mutableFloatStateOf(0f) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            getFastLocation(context) { lat, lng, name ->
-                latitude = lat
-                longitude = lng
-                locationName = name
-                val isValid = lat != 0.0 && lng != 0.0 && 
-                              !name.contains("unavailable", ignoreCase = true) &&
-                              !name.contains("Error", ignoreCase = true)
-                locationAvailable = isValid
-                showLocationDialog = !isValid
-            }
-            kotlinx.coroutines.delay(2000)
-        }
-    }
 
     // ---------- Sensors Setup ----------
     DisposableEffect(Unit) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
-
-        val stepListener = object : android.hardware.SensorEventListener {
-            override fun onSensorChanged(event: android.hardware.SensorEvent?) {
-                event?.let {
-                    if (it.sensor.type == android.hardware.Sensor.TYPE_STEP_COUNTER)
-                        currentSteps = it.values[0]
-                }
-            }
-            override fun onAccuracyChanged(p0: android.hardware.Sensor?, p1: Int) {}
-        }
 
         val orientationListener = object : android.hardware.SensorEventListener {
             val accelerometerReading = FloatArray(3)
@@ -135,9 +108,6 @@ fun AddSpotScreen() {
             override fun onAccuracyChanged(p0: android.hardware.Sensor?, p1: Int) {}
         }
 
-        sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_STEP_COUNTER)?.also {
-            sensorManager.registerListener(stepListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI)
-        }
         sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)?.also {
             sensorManager.registerListener(orientationListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI)
         }
@@ -146,8 +116,23 @@ fun AddSpotScreen() {
         }
 
         onDispose {
-            sensorManager.unregisterListener(stepListener)
             sensorManager.unregisterListener(orientationListener)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            getFastLocation(context) { lat, lng, name ->
+                latitude = lat
+                longitude = lng
+                locationName = name
+                val isValid = lat != 0.0 && lng != 0.0 && 
+                              !name.contains("unavailable", ignoreCase = true) &&
+                              !name.contains("Error", ignoreCase = true)
+                locationAvailable = isValid
+                showLocationDialog = !isValid
+            }
+            kotlinx.coroutines.delay(2000)
         }
     }
 
@@ -305,7 +290,7 @@ fun AddSpotScreen() {
                         isLoading = true
                         uploadSpotWithBytes(
                             context, compressedImage!!, "", description,
-                            latitude, longitude, locationName, currentSteps, currentAzimuth
+                            latitude, longitude, locationName, currentAzimuth
                         ) { success, msg ->
                             isLoading = false
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
@@ -403,7 +388,7 @@ suspend fun reverseGeocode(context: Context, lat: Double, lng: Double): String? 
 
 suspend fun uploadSpotWithBytes(
     context: Context, bytes: ByteArray, species: String, description: String,
-    latitude: Double, longitude: Double, locationName: String, steps: Float, azimuth: Float,
+    latitude: Double, longitude: Double, locationName: String, azimuth: Float,
     onComplete: (Boolean, String) -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
@@ -449,7 +434,7 @@ suspend fun uploadSpotWithBytes(
             "image_id" to imageId,
             "user_id" to (userId ?: "anonymous"),
             "daily_steps" to dailySteps,
-            "sensor_data" to mapOf("steps_count" to steps, "compass_azimuth" to azimuth)
+            "sensor_data" to mapOf("compass_azimuth" to azimuth)
         )
 
         db.collection("spots").add(spotData).await()

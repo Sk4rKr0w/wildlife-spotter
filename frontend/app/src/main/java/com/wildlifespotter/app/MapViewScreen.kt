@@ -3,6 +3,7 @@ package com.wildlifespotter.app
 import android.annotation.SuppressLint
 import android.graphics.drawable.BitmapDrawable
 import android.util.Log
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -56,6 +57,7 @@ fun MapViewScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showLocationAlert by remember { mutableStateOf(false) }
+    var selectedSpotGroup by remember { mutableStateOf<List<SpotLocation>?>(null) }
 
     LaunchedEffect(Unit) {
         Configuration.getInstance().load(
@@ -200,18 +202,33 @@ fun MapViewScreen(
             mapView.controller.setCenter(loc)
         }
 
-        spots.forEach { spot ->
-            val isOwn = spot.userId == currentUid
+        val groupedSpots = spots.groupBy { spot ->
+            "${(spot.latitude * 10000).toInt()}_${(spot.longitude * 10000).toInt()}"
+        }
+
+        groupedSpots.forEach { (_, spotsAtLocation) ->
+            val firstSpot = spotsAtLocation.first()
+            val hasOwn = spotsAtLocation.any { it.userId == currentUid }
+            val markerColor = if (hasOwn) android.graphics.Color.GREEN else android.graphics.Color.BLUE
+            
             val marker = Marker(mapView).apply {
-                position = GeoPoint(spot.latitude, spot.longitude)
-                title = spot.speciesLabel
-                snippet = spot.locationName
+                position = GeoPoint(firstSpot.latitude, firstSpot.longitude)
+                title = if (spotsAtLocation.size > 1) {
+                    "${spotsAtLocation.size} spots here"
+                } else {
+                    firstSpot.speciesLabel
+                }
+                snippet = if (spotsAtLocation.size == 1) firstSpot.locationName else null
                 setOnMarkerClickListener { _, _ ->
-                    onSpotClick(spot.id)
+                    if (spotsAtLocation.size == 1) {
+                        onSpotClick(firstSpot.id)
+                    } else {
+                        selectedSpotGroup = spotsAtLocation
+                    }
                     true
                 }
                 ContextCompat.getDrawable(context, android.R.drawable.ic_dialog_map)?.let {
-                    it.setTint(if (isOwn) android.graphics.Color.GREEN else android.graphics.Color.BLUE)
+                    it.setTint(markerColor)
                     icon = it as BitmapDrawable
                 }
             }
@@ -261,6 +278,55 @@ fun MapViewScreen(
                     confirmButton = {
                         Button(onClick = { showLocationAlert = false }) {
                             Text("OK")
+                        }
+                    }
+                )
+            }
+
+            selectedSpotGroup?.let { spotsGroup ->
+                AlertDialog(
+                    onDismissRequest = { selectedSpotGroup = null },
+                    title = { Text("Select a Spot") },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            spotsGroup.forEach { spot ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selectedSpotGroup = null
+                                            onSpotClick(spot.id)
+                                        },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = spot.speciesLabel,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (spot.userId == auth.currentUser?.uid) {
+                                                "By you"
+                                            } else {
+                                                "By another user"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { selectedSpotGroup = null }) {
+                            Text("Cancel")
                         }
                     }
                 )
