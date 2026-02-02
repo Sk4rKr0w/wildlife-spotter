@@ -148,7 +148,7 @@ fun HomeScreen(
     }
 
     LaunchedEffect(dailySteps) {
-        if (dailySteps > 0 && dailySteps % 10 == 0) {
+        if (dailySteps > 0 && dailySteps % 5 == 0) {
             stepCounter?.sync()
         }
     }

@@ -204,7 +204,7 @@ fun SignIn(
                         onSignInClick()
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().height(52.dp)
             ) {
                 Text("Sign In")
             }

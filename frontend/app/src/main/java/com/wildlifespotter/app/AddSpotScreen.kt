@@ -336,7 +336,8 @@ fun AddSpotScreen() {
                 confirmButton = {
                     Button(
                         onClick = { },
-                        enabled = false
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Waiting for location...")
                     }
@@ -441,7 +442,7 @@ suspend fun uploadSpotWithBytes(
         if (userId != null) {
             db.collection("users").document(userId).set(mapOf("totalSpots" to FieldValue.increment(1)), com.google.firebase.firestore.SetOptions.merge()).await()
         }
-        onComplete(true, if(annotation?.label != null) "Identified: ${annotation.label}" else "Spot added!")
+        onComplete(true, if(annotation?.label != null) "Identified: ${annotation.label.replaceFirstChar { it.uppercase() }}" else "Spot added!")
     } catch (e: Exception) { onComplete(false, "Error: ${e.message}") }
 }
 
