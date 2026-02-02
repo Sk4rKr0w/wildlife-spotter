@@ -72,6 +72,8 @@ fun AddSpotScreen() {
     var description by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var isAnalyzingImage by remember { mutableStateOf(false) }
+    var locationAvailable by remember { mutableStateOf(true) }
+    var showLocationDialog by remember { mutableStateOf(false) }
 
     // ---------- Location ----------
     var locationName by remember { mutableStateOf("Getting location...") }
@@ -81,6 +83,22 @@ fun AddSpotScreen() {
     // ---------- Sensors ----------
     var currentSteps by remember { mutableFloatStateOf(0f) }
     var currentAzimuth by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            getFastLocation(context) { lat, lng, name ->
+                latitude = lat
+                longitude = lng
+                locationName = name
+                val isValid = lat != 0.0 && lng != 0.0 && 
+                              !name.contains("unavailable", ignoreCase = true) &&
+                              !name.contains("Error", ignoreCase = true)
+                locationAvailable = isValid
+                showLocationDialog = !isValid
+            }
+            kotlinx.coroutines.delay(2000)
+        }
+    }
 
     // ---------- Sensors Setup ----------
     DisposableEffect(Unit) {
@@ -137,13 +155,9 @@ fun AddSpotScreen() {
     val onImageCaptured: (ByteArray?) -> Unit = { compressed ->
         if (compressed != null) {
             compressedImage = compressed
+            isAnalyzingImage = true
             scope.launch {
-                isAnalyzingImage = true
-                getFastLocation(context) { lat, lng, name ->
-                    latitude = lat
-                    longitude = lng
-                    locationName = name
-                }
+                kotlinx.coroutines.delay(500)
                 isAnalyzingImage = false
             }
         }
@@ -304,7 +318,7 @@ fun AddSpotScreen() {
                         }
                     }
                 },
-                enabled = !isLoading && compressedImage != null,
+                enabled = !isLoading && compressedImage != null && locationAvailable,
                 modifier = Modifier.fillMaxWidth().height(60.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                 shape = RoundedCornerShape(16.dp)
@@ -317,6 +331,32 @@ fun AddSpotScreen() {
                 }
             }
             Spacer(Modifier.height(40.dp))
+        }
+
+        if (showLocationDialog) {
+            AlertDialog(
+                onDismissRequest = { },
+                title = { Text("Location Required") },
+                text = { 
+                    Column {
+                        Text("Please enable location services to add a wildlife spot.")
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Current status: $locationName",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { },
+                        enabled = false
+                    ) {
+                        Text("Waiting for location...")
+                    }
+                }
+            )
         }
     }
 }
