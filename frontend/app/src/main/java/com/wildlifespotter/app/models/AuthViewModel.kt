@@ -38,10 +38,13 @@ class AuthViewModel : ViewModel() {
 
     var user by mutableStateOf<FirebaseUser?>(null)
     private val authStateListener: FirebaseAuth.AuthStateListener
+    private var listenerActive = true
 
     init {
         authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
-            user = firebaseAuth.currentUser
+            if (listenerActive) {
+                user = firebaseAuth.currentUser
+            }
         }
         auth.addAuthStateListener(authStateListener)
     }
@@ -52,7 +55,9 @@ class AuthViewModel : ViewModel() {
     }
 
     var showGoogleProfileDialog by mutableStateOf(false)
-    private var pendingGoogleUser: FirebaseUser? = null
+    var showUsernameDialog by mutableStateOf(false)
+    var pendingGoogleUser: FirebaseUser? by mutableStateOf(null)
+    var pendingEmailUser: FirebaseUser? by mutableStateOf(null)
     var isCheckingUsername by mutableStateOf(false)
     var isCheckingEmail by mutableStateOf(false)
 
@@ -78,10 +83,24 @@ class AuthViewModel : ViewModel() {
                             errorMessage = "Email not verified. Please verify your email before logging in."
                             return@addOnCompleteListener
                         }
-                        user = firebaseUser
-                        viewModelScope.launch {
-                            syncUserEmail(firebaseUser)
-                        }
+
+                        db.collection("users")
+                            .document(firebaseUser.uid)
+                            .get()
+                            .addOnSuccessListener { doc ->
+                                if (!doc.exists() || doc.getString("username").isNullOrBlank()) {
+                                    pendingEmailUser = firebaseUser
+                                    showUsernameDialog = true
+                                } else {
+                                    user = firebaseUser
+                                    viewModelScope.launch {
+                                        syncUserEmail(firebaseUser)
+                                    }
+                                }
+                            }
+                            .addOnFailureListener { e ->
+                                errorMessage = e.message ?: "Error checking user data"
+                            }
                     } else {
                         errorMessage = "Error during login"
                     }
@@ -130,12 +149,14 @@ class AuthViewModel : ViewModel() {
 
         isLoading = true
         errorMessage = null
+        listenerActive = false
 
         auth.fetchSignInMethodsForEmail(email.trim())
             .addOnSuccessListener { res ->
                 val methods = res.signInMethods ?: emptyList()
                 if (methods.isNotEmpty()) {
                     isLoading = false
+                    listenerActive = true
                     errorMessage = "Email already in use"
                     return@addOnSuccessListener
                 }
@@ -144,9 +165,10 @@ class AuthViewModel : ViewModel() {
                         if (task.isSuccessful) {
                             val user = auth.currentUser
                             user?.sendEmailVerification()?.addOnCompleteListener { sendEmailTask ->
+                                auth.signOut()
+                                listenerActive = true
                                 if(sendEmailTask.isSuccessful) {
                                     registrationState = RegistrationState.SUCCESS
-                                    auth.signOut()
                                 } else {
                                     errorMessage = "User created, but failed to send verification email."
                                 }
@@ -154,12 +176,14 @@ class AuthViewModel : ViewModel() {
                             }
                         } else {
                             isLoading = false
+                            listenerActive = true
                             errorMessage = task.exception?.message ?: "Error during registration"
                         }
                     }
             }
             .addOnFailureListener { e ->
                 isLoading = false
+                listenerActive = true
                 errorMessage = e.message ?: "Unable to verify email"
             }
     }
@@ -183,7 +207,13 @@ class AuthViewModel : ViewModel() {
             }
     }
 
-    private fun createUserDocument(firebaseUser: FirebaseUser, name: String, countryCode: String) {
+    private fun createUserDocument(
+        firebaseUser: FirebaseUser,
+        name: String,
+        countryCode: String,
+        onSuccess: () -> Unit = {},
+        onFailure: (String) -> Unit = {}
+    ) {
         val userData = hashMapOf(
             "uid" to firebaseUser.uid,
             "email" to firebaseUser.email,
@@ -205,10 +235,13 @@ class AuthViewModel : ViewModel() {
             .set(userData)
             .addOnSuccessListener {
                 isLoading = false
+                onSuccess()
             }
             .addOnFailureListener { e ->
                 isLoading = false
-                errorMessage = "User created, but Firestore sync failed: ${e.message}"
+                val msg = "User created, but Firestore sync failed: ${e.message}"
+                errorMessage = msg
+                onFailure(msg)
             }
     }
 
@@ -282,13 +315,22 @@ class AuthViewModel : ViewModel() {
                                 pendingGoogleUser = null
                                 showGoogleProfileDialog = false
                             } else {
-                                createUserDocument(firebaseUser, name, countryCode)
-                                user = firebaseUser
-                                pendingGoogleUser = null
-                                showGoogleProfileDialog = false
-                                viewModelScope.launch {
-                                    syncUserEmail(firebaseUser)
-                                }
+                                createUserDocument(firebaseUser, name, countryCode,
+                                    onSuccess = {
+                                        user = firebaseUser
+                                        pendingGoogleUser = null
+                                        showGoogleProfileDialog = false
+                                        viewModelScope.launch {
+                                            syncUserEmail(firebaseUser)
+                                        }
+                                    },
+                                    onFailure = {
+                                        firebaseUser.delete()
+                                        auth.signOut()
+                                        pendingGoogleUser = null
+                                        showGoogleProfileDialog = false
+                                    }
+                                )
                             }
                         }
                         .addOnFailureListener { e ->
@@ -302,6 +344,56 @@ class AuthViewModel : ViewModel() {
                 } else {
                     isLoading = false
                     errorMessage = "User created, error during saving username"
+                }
+            }
+    }
+
+    fun completeEmailProfile(name: String, countryInput: String) {
+        val firebaseUser = pendingEmailUser ?: return
+        if (name.isBlank()) {
+            errorMessage = "Username cannot be empty"
+            return
+        }
+        val countryCode = toAlpha3Country(countryInput)
+        if (countryCode == null) {
+            errorMessage = "Invalid country"
+            return
+        }
+        isLoading = true
+        errorMessage = null
+        val profileUpdates = UserProfileChangeRequest.Builder()
+            .setDisplayName(name)
+            .build()
+        firebaseUser.updateProfile(profileUpdates)
+            ?.addOnCompleteListener { updateTask ->
+                if (updateTask.isSuccessful) {
+                    db.collection("users")
+                        .whereEqualTo("username", name)
+                        .get()
+                        .addOnSuccessListener { snap ->
+                            if (snap.documents.any { it.id != firebaseUser.uid }) {
+                                isLoading = false
+                                errorMessage = "Username already taken"
+                            } else {
+                                createUserDocument(firebaseUser, name, countryCode,
+                                    onSuccess = {
+                                        user = firebaseUser
+                                        pendingEmailUser = null
+                                        showUsernameDialog = false
+                                        viewModelScope.launch {
+                                            syncUserEmail(firebaseUser)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            isLoading = false
+                            errorMessage = e.message ?: "Username check failed"
+                        }
+                } else {
+                    isLoading = false
+                    errorMessage = "Error saving username"
                 }
             }
     }

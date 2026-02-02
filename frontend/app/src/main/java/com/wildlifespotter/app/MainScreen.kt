@@ -134,7 +134,8 @@ fun MainScreen(
         }
     }
 
-    if (authViewModel.showGoogleProfileDialog) {
+    if (authViewModel.showGoogleProfileDialog || authViewModel.showUsernameDialog) {
+        val isGoogle = authViewModel.showGoogleProfileDialog
         AlertDialog(
             onDismissRequest = { },
             title = { Text("Welcome!") },
@@ -220,7 +221,11 @@ fun MainScreen(
                                 usernameTaken = true
                                 return@checkUsernameAvailable
                             }
-                            authViewModel.completeGoogleProfile(username, countryInput)
+                            if (isGoogle) {
+                                authViewModel.completeGoogleProfile(username, countryInput)
+                            } else {
+                                authViewModel.completeEmailProfile(username, countryInput)
+                            }
                         }
                     }
                 ) {

@@ -98,12 +98,17 @@ fun AppNavigation() {
                             .document(currentUser.uid)
                             .get()
                             .addOnSuccessListener { doc ->
-                                if (doc.exists()) {
+                                if (doc.exists() && !doc.getString("username").isNullOrBlank()) {
                                     navController.navigate("home") {
                                         popUpTo("loading") { inclusive = true }
                                     }
                                 } else {
-                                    navController.navigate("sign_in") {
+                                    authViewModel.user = currentUser
+                                    authViewModel.pendingEmailUser = currentUser
+                                    if (!doc.exists() || doc.getString("username").isNullOrBlank()) {
+                                        authViewModel.showUsernameDialog = true
+                                    }
+                                    navController.navigate("home") {
                                         popUpTo("loading") { inclusive = true }
                                     }
                                 }
