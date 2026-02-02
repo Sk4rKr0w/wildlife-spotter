@@ -46,9 +46,15 @@ function initDb() {
       id TEXT PRIMARY KEY,
       filename TEXT NOT NULL,
       mime TEXT NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      user_id TEXT
     )`
   );
+  const columns = db.prepare("PRAGMA table_info(images)").all();
+  const hasUserId = columns.some((col) => col.name === "user_id");
+  if (!hasUserId) {
+    db.exec("ALTER TABLE images ADD COLUMN user_id TEXT");
+  }
   return db;
 }
 
@@ -86,8 +92,8 @@ app.post("/images", checkAuth, upload.single("image"), (req, res) => {
     fs.writeFileSync(filePath, buffer);
     
     db.prepare(
-      "INSERT INTO images (id, filename, mime, created_at) VALUES (?, ?, ?, ?)"
-    ).run(id, filename, mimetype, new Date().toISOString());
+      "INSERT INTO images (id, filename, mime, created_at, user_id) VALUES (?, ?, ?, ?, ?)"
+    ).run(id, filename, mimetype, new Date().toISOString(), req.user.uid);
 
     res.status(201).json({ id });
   } catch (err) {
@@ -192,11 +198,16 @@ app.delete("/images/:id", checkAuth, (req, res) => {
     const { id } = req.params;
     const db = req.app.locals.db;
     const row = db
-      .prepare("SELECT filename FROM images WHERE id = ?")
+      .prepare("SELECT filename, user_id FROM images WHERE id = ?")
       .get(id);
 
     if (!row) {
       res.status(404).json({ error: "Image not found" });
+      return;
+    }
+
+    if (!row.user_id || row.user_id !== req.user.uid) {
+      res.status(403).json({ error: "Forbidden: Not image owner" });
       return;
     }
 

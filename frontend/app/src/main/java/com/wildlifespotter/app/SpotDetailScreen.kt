@@ -33,6 +33,7 @@ fun SpotDetailScreen(
     onSpotDeleted: () -> Unit
 ) {
     val db = FirebaseFirestore.getInstance()
+    val currentUid = remember { FirebaseAuth.getInstance().currentUser?.uid }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     
@@ -109,19 +110,23 @@ fun SpotDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showEditDialog = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit description",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    if (spot != null && currentUid != null && spot!!.userId == currentUid) {
+                        IconButton(onClick = { showEditDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit description",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
-                    IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete spot",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    if (spot != null && currentUid != null && spot!!.userId == currentUid) {
+                        IconButton(onClick = { showDeleteDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete spot",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             )
