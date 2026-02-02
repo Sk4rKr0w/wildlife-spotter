@@ -2,7 +2,6 @@ package com.wildlifespotter.app
 
 import android.annotation.SuppressLint
 import android.graphics.drawable.BitmapDrawable
-import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -19,12 +18,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import android.location.Location
 import com.google.android.gms.location.*
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.firebase.geofire.GeoFireUtils
-import com.firebase.geofire.GeoLocation
-import kotlinx.coroutines.tasks.await
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.wildlifespotter.app.models.MapViewModel
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -50,14 +48,21 @@ fun MapViewScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val auth = remember { FirebaseAuth.getInstance() }
-    val db = remember { FirebaseFirestore.getInstance() }
-
     var userLocation by remember { mutableStateOf<GeoPoint?>(null) }
-    var spots by remember { mutableStateOf<List<SpotLocation>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val mapViewModel: MapViewModel = viewModel()
+    val spots = mapViewModel.spots
+    val isLoading = mapViewModel.isLoading
+    val errorMessage = mapViewModel.errorMessage
     var showLocationAlert by remember { mutableStateOf(false) }
     var selectedSpotGroup by remember { mutableStateOf<List<SpotLocation>?>(null) }
+    var rangeKm by remember { mutableStateOf(5f) }
+    var hasCenteredOnUser by remember { mutableStateOf(false) }
+    var configReady by remember { mutableStateOf(false) }
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+    var lastQueryLocation by remember { mutableStateOf<GeoPoint?>(null) }
+    var lastQueryRangeKm by remember { mutableStateOf<Float?>(null) }
+
+    val minMoveMeters = 25f
 
     LaunchedEffect(Unit) {
         Configuration.getInstance().load(
@@ -65,32 +70,26 @@ fun MapViewScreen(
             androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
         )
         Configuration.getInstance().userAgentValue = context.packageName
+        configReady = true
     }
-
-    // MapView
-    val mapView = remember {
-        MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
-            setMultiTouchControls(true)
-            controller.setZoom(15.0)
-        }
-    }
-
     val lifecycleObserver = remember {
         LifecycleEventObserver { _, event ->
+            val mv = mapViewRef ?: return@LifecycleEventObserver
             when (event) {
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_RESUME -> mv.onResume()
+                Lifecycle.Event.ON_PAUSE -> mv.onPause()
                 else -> {}
             }
         }
     }
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, mapViewRef) {
+        val mv = mapViewRef
+        if (mv == null) return@DisposableEffect onDispose { }
         lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
-            mapView.onDetach()
+            mv.onDetach()
         }
     }
 
@@ -109,7 +108,7 @@ fun MapViewScreen(
 
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY, 2000L
-        ).setMinUpdateDistanceMeters(1f)
+        ).setMinUpdateDistanceMeters(minMoveMeters)
             .build()
 
         val locationCallback = object : LocationCallback() {
@@ -128,62 +127,29 @@ fun MapViewScreen(
         }
     }
 
-    LaunchedEffect(userLocation) {
+    LaunchedEffect(userLocation, rangeKm) {
         val loc = userLocation ?: return@LaunchedEffect
-        try {
-            // Geohash del centro (posizione utente), troncato a 5 caratteri (~5 km di lato).
-            // Tutti gli spot che condividono lo stesso prefisso a 5 char sono nel raggio.
-            val fullHash = GeoFireUtils.getGeoHashForLocation(
-                GeoLocation(loc.latitude, loc.longitude)
+        val last = lastQueryLocation
+        val lastRange = lastQueryRangeKm
+        val rangeChanged = lastRange == null || lastRange != rangeKm
+        if (!rangeChanged && last != null) {
+            val distance = FloatArray(1)
+            Location.distanceBetween(
+                last.latitude,
+                last.longitude,
+                loc.latitude,
+                loc.longitude,
+                distance
             )
-            val prefix = fullHash.substring(0, 5)
-
-            // Range lessicografico sul prefisso: "abcde" .. "abcdf"
-            // (ultimo carattere +1 nel charset base32 di geohash: 0-9 a-z esclusi a,i,l,o)
-            val base32 = "0123456789bcdefghjkmnpqrstuvwxyz"
-            val lastChar = prefix.last()
-            val nextChar = base32[base32.indexOf(lastChar) + 1]
-            val rangeMin = prefix
-            val rangeMax = prefix.dropLast(1) + nextChar
-
-            val snapshot = db.collection("spots")
-                .orderBy("geohash")
-                .startAt(rangeMin)
-                .endBefore(rangeMax)
-                .get()
-                .await()
-
-            spots = snapshot.documents.mapNotNull { doc ->
-                try {
-                    val lat = doc.getDouble("latitude") ?: return@mapNotNull null
-                    val lng = doc.getDouble("longitude") ?: return@mapNotNull null
-                    val speciesRaw = doc.get("species")
-                    val speciesLabel = when (speciesRaw) {
-                        is String -> speciesRaw
-                        is Map<*, *> -> speciesRaw["label"] as? String ?: "Unknown"
-                        else -> "Unknown"
-                    }
-                    SpotLocation(
-                        id = doc.id,
-                        latitude = lat,
-                        longitude = lng,
-                        speciesLabel = speciesLabel.replaceFirstChar { it.uppercase() },
-                        locationName = doc.getString("location_name") ?: "Unknown",
-                        userId = doc.getString("user_id") ?: ""
-                    )
-                } catch (e: Exception) {
-                    Log.e("MapViewScreen", "Error parsing spot", e)
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            errorMessage = e.message
-        } finally {
-            isLoading = false
+            if (distance[0] < minMoveMeters) return@LaunchedEffect
         }
+        lastQueryLocation = loc
+        lastQueryRangeKm = rangeKm
+        mapViewModel.loadSpots(loc.latitude, loc.longitude, rangeKm)
     }
 
-    LaunchedEffect(userLocation, spots) {
+    LaunchedEffect(userLocation, spots, mapViewRef) {
+        val mapView = mapViewRef ?: return@LaunchedEffect
         val currentUid = auth.currentUser?.uid
         mapView.overlays.clear()
 
@@ -200,6 +166,10 @@ fun MapViewScreen(
             }
             mapView.overlays.add(userMarker)
             mapView.controller.setCenter(loc)
+            if (!hasCenteredOnUser) {
+                mapView.controller.setZoom(16.5)
+                hasCenteredOnUser = true
+            }
         }
 
         val groupedSpots = spots.groupBy { spot ->
@@ -209,7 +179,7 @@ fun MapViewScreen(
         groupedSpots.forEach { (_, spotsAtLocation) ->
             val firstSpot = spotsAtLocation.first()
             val hasOwn = spotsAtLocation.any { it.userId == currentUid }
-            val markerColor = if (hasOwn) android.graphics.Color.GREEN else android.graphics.Color.BLUE
+            val markerColor = if (hasOwn) android.graphics.Color.parseColor("#1B5E20") else android.graphics.Color.BLUE
             
             val marker = Marker(mapView).apply {
                 position = GeoPoint(firstSpot.latitude, firstSpot.longitude)
@@ -267,7 +237,47 @@ fun MapViewScreen(
                     modifier = Modifier.align(Alignment.Center),
                     color = Color.Red
                 )
-                else -> AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+                !configReady -> CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center),
+                    color = Color(0xFF4CAF50)
+                )
+                else -> AndroidView(
+                    factory = { ctx ->
+                        MapView(ctx).apply {
+                            setTileSource(TileSourceFactory.MAPNIK)
+                            setMultiTouchControls(true)
+                            controller.setZoom(16.5)
+                            mapViewRef = this
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp)
+                    .padding(horizontal = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Range: ${rangeKm.toInt()} km",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Slider(
+                        value = rangeKm,
+                        onValueChange = { rangeKm = it },
+                        valueRange = 1f..25f,
+                        steps = 23
+                    )
+                }
             }
 
             if (showLocationAlert) {
