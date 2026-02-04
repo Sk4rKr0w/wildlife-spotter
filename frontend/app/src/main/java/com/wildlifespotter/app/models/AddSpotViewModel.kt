@@ -1,7 +1,6 @@
 package com.wildlifespotter.app.models
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,12 +51,6 @@ class AddSpotViewModel : ViewModel() {
             val compressed = AddSpotDataSource.compressImage(context, uri)
             handleCompressedImage(compressed)
         }
-    }
-
-    fun onCameraCaptured(bitmap: Bitmap) {
-        uiState = uiState.copy(selectedImageUri = null, isAnalyzingImage = true)
-        val compressed = AddSpotDataSource.compressBitmap(bitmap)
-        handleCompressedImage(compressed)
     }
 
     private fun handleCompressedImage(compressed: ByteArray?) {

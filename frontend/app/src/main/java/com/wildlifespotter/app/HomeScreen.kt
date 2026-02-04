@@ -1,6 +1,5 @@
 package com.wildlifespotter.app
 
-import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -25,18 +24,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.edit
 import com.google.android.gms.location.LocationServices
 import com.wildlifespotter.app.ui.components.*
 import com.wildlifespotter.app.models.HomeViewModel
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import kotlin.math.sqrt
 import kotlinx.coroutines.launch
-import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun HomeScreen(
+    homeViewModel: HomeViewModel,
     onNavigateToMap: () -> Unit,
     onNavigateToHistory: () -> Unit
 ){
@@ -44,27 +39,7 @@ fun HomeScreen(
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
 
-    val viewModel: HomeViewModel = viewModel()
-    val uiState = viewModel.uiState
-
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd-MM-yyyy") }
-    val todayKey = remember { LocalDate.now().format(dateFormatter) }
-
-    LaunchedEffect(todayKey) {
-        viewModel.initialize(todayKey)
-    }
-
-    val sensorManager = remember {
-        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    }
-
-    val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-    val magnetSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-
-    // ===== Stepcounter params =====
-    var lastStepTime by remember { mutableStateOf(0L) }
-    val stepThreshold = 13f
-    val minStepInterval = 300L
+    val uiState = homeViewModel.uiState
 
     // ===== Compass states =====
     var azimuth by remember { mutableStateOf(0f) }
@@ -79,22 +54,17 @@ fun HomeScreen(
     var longitude by remember { mutableStateOf(0.0) }
     var address by remember { mutableStateOf("Unknown") }
 
+    val sensorManager = remember {
+        context.getSystemService(android.content.Context.SENSOR_SERVICE) as android.hardware.SensorManager
+    }
+    val accelSensor = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+    val magnetSensor = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD)
+
     val sensorListener = remember {
         object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 when (event.sensor.type) {
                     Sensor.TYPE_ACCELEROMETER -> {
-                        val x = event.values[0]
-                        val y = event.values[1]
-                        val z = event.values[2]
-
-                        val accel = sqrt(x * x + y * y + z * z)
-                        val now = System.currentTimeMillis()
-                        if (accel > stepThreshold && now - lastStepTime > minStepInterval) {
-                            viewModel.onStepDetected(todayKey)
-                            lastStepTime = now
-                        }
-
                         System.arraycopy(event.values, 0, gravityValues, 0, 3)
                     }
                     Sensor.TYPE_MAGNETIC_FIELD -> {
@@ -116,8 +86,8 @@ fun HomeScreen(
     }
 
     DisposableEffect(sensorManager) {
-        accelSensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI) }
-        magnetSensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI) }
+        accelSensor?.let { sensorManager.registerListener(sensorListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
+        magnetSensor?.let { sensorManager.registerListener(sensorListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
 
         onDispose {
             sensorManager.unregisterListener(sensorListener)
@@ -193,6 +163,58 @@ fun HomeScreen(
                 color = Color(0xFF2E7D32),
                 modifier = Modifier.padding(vertical = 16.dp)
             )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF2D3E50).copy(alpha = 0.85f)
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.align(Alignment.TopStart),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Pets,
+                            contentDescription = null,
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Total Spots (All Time)",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (uiState.isLoadingSteps) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF4CAF50),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(48.dp)
+                        )
+                    } else {
+                        Text(
+                            uiState.totalSpots.toString(),
+                            color = Color(0xFF4CAF50),
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.BottomEnd)
+                        )
+                    }
+                }
+            }
 
             Card(
                 modifier = Modifier

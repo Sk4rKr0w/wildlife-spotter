@@ -11,7 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -39,6 +40,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -58,6 +62,8 @@ import androidx.navigation.NavBackStackEntry
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wildlifespotter.app.models.MySpotsViewModel
 import com.wildlifespotter.app.models.UserSpot
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable
 fun MySpotsScreen(
@@ -69,12 +75,30 @@ fun MySpotsScreen(
     val resetTokens = remember { mutableStateMapOf<String, Int>() }
     var editingSpot by remember { mutableStateOf<UserSpot?>(null) }
     var editedDescription by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
 
     val viewModel: MySpotsViewModel = viewModel()
     val uiState = viewModel.uiState
+    val spotCount by rememberUpdatedState(newValue = uiState.spots.size)
+    val loadMoreAllowed by rememberUpdatedState(
+        newValue = !uiState.isLoadingMore && !uiState.endReached && !uiState.isLoading
+    )
 
     LaunchedEffect(Unit) {
         viewModel.loadSpots()
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+        }
+            .distinctUntilChanged()
+            .collectLatest { lastVisible ->
+                val threshold = (spotCount - 2).coerceAtLeast(0)
+                if (lastVisible >= threshold && loadMoreAllowed) {
+                    viewModel.loadMore()
+                }
+            }
     }
 
     LaunchedEffect(navBackStackEntry) {
@@ -139,10 +163,11 @@ fun MySpotsScreen(
                 }
                 else -> {
                     LazyColumn(
+                        state = listState,
                         contentPadding = PaddingValues(vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(uiState.spots, key = { it.id }) { spot ->
+                        itemsIndexed(uiState.spots, key = { _, spot -> spot.id }) { _, spot ->
                             SwipeToDeleteSpot(
                                 spot = spot,
                                 onClick = { onNavigateToSpotDetail(spot.id) },
@@ -175,6 +200,18 @@ fun MySpotsScreen(
                                     }
                                 }
                             )
+                        }
+                        if (uiState.isLoadingMore) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
                         }
                     }
                 }
@@ -292,15 +329,25 @@ fun SpotCard(
         Column(modifier = Modifier.padding(16.dp)) {
             if (spot.imageId.isNotBlank()) {
                 val imageUrl = RetrofitInstance.imageUrl(spot.imageId)
-                Image(
-                    painter = rememberAsyncImagePainter(imageUrl),
-                    contentDescription = null,
+                val painter = rememberAsyncImagePainter(imageUrl)
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(180.dp)
-                        .padding(bottom = 12.dp),
-                    contentScale = ContentScale.Crop
-                )
+                        .padding(bottom = 12.dp)
+                ) {
+                    Image(
+                        painter = painter,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    if (painter.state is AsyncImagePainter.State.Loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+                }
             }
             Text(
                 text = spot.speciesLabel,

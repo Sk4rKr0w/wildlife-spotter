@@ -7,7 +7,6 @@ import com.wildlifespotter.app.models.UserSpot
 import kotlinx.coroutines.tasks.await
 
 object SpotDetailDataSource {
-    private val db = FirebaseFirestore.getInstance()
 
     data class SpotDetailResult(
         val spot: UserSpot?,
@@ -15,6 +14,7 @@ object SpotDetailDataSource {
     )
 
     suspend fun loadSpot(spotId: String): SpotDetailResult {
+        val db = FirebaseFirestore.getInstance()
         val doc = db.collection("spots").document(spotId).get().await()
         if (!doc.exists()) return SpotDetailResult(null, null)
 
@@ -52,6 +52,7 @@ object SpotDetailDataSource {
     }
 
     suspend fun updateDescription(spotId: String, newText: String) {
+        val db = FirebaseFirestore.getInstance()
         db.collection("spots")
             .document(spotId)
             .update("description", newText)
@@ -59,6 +60,7 @@ object SpotDetailDataSource {
     }
 
     suspend fun deleteSpot(spot: UserSpot) {
+        val db = FirebaseFirestore.getInstance()
         db.collection("spots")
             .document(spot.id)
             .delete()

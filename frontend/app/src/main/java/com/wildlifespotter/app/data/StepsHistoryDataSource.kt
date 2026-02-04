@@ -4,9 +4,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
 object StepsHistoryDataSource {
-    private val db = FirebaseFirestore.getInstance()
 
     suspend fun loadHistory(userId: String): Map<String, Long> {
+        val db = FirebaseFirestore.getInstance()
         val snapshot = db.collection("users")
             .document(userId)
             .collection("steps")

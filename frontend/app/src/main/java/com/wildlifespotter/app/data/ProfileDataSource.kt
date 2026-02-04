@@ -14,7 +14,6 @@ import kotlinx.coroutines.tasks.await
 
 object ProfileDataSource {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
-    private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
 
     data class ProfileLoadResult(
         val username: String,
@@ -31,6 +30,8 @@ object ProfileDataSource {
     fun currentUser(): FirebaseUser? = auth.currentUser
 
     suspend fun loadProfile(user: FirebaseUser): ProfileLoadResult {
+        val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+
         val supportsPassword = user.providerData.any { it.providerId == "password" }
         return try {
             val userDoc = db.collection("users")
@@ -64,6 +65,8 @@ object ProfileDataSource {
         newPassword: String,
         confirmPassword: String
     ): ProfileSaveResult {
+        val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+
         val needsReauth = changePassword || email != user.email
         if (needsReauth) {
             val supportsPassword = user.providerData.any { it.providerId == "password" }

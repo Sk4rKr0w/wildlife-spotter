@@ -4,7 +4,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
 object StepsDataSource {
-    private val db = FirebaseFirestore.getInstance()
 
     data class StepLoadResult(
         val dailySteps: Int,
@@ -13,6 +12,7 @@ object StepsDataSource {
     )
 
     suspend fun loadInitial(userId: String, todayKey: String): StepLoadResult {
+        val db = FirebaseFirestore.getInstance()
         val todayDoc = db.collection("users")
             .document(userId)
             .collection("steps")
@@ -38,6 +38,7 @@ object StepsDataSource {
         dailySteps: Int,
         totalSteps: Long
     ) {
+        val db = FirebaseFirestore.getInstance()
         db.collection("users")
             .document(userId)
             .collection("steps")

@@ -1,5 +1,10 @@
 package com.wildlifespotter.app
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -13,11 +18,17 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wildlifespotter.app.models.AuthViewModel
+import com.wildlifespotter.app.models.HomeViewModel
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.sqrt
 
 sealed class Screen(val route: String) {
     object Home : Screen("home_tab")
@@ -33,6 +44,7 @@ fun MainScreen(
     authViewModel: AuthViewModel,
     onLogout: () -> Unit
 ) {
+    val context = LocalContext.current
     val navController = rememberNavController()
     var username by remember { mutableStateOf("") }
     var usernameError by remember { mutableStateOf(false) }
@@ -53,6 +65,48 @@ fun MainScreen(
     val currentRoute = navBackStackEntry?.destination?.route
     val showBottomBar = currentRoute !in listOf("steps_history", "spot_detail/{spotId}", "map_view")
 
+    val homeViewModel: HomeViewModel = viewModel()
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd-MM-yyyy") }
+    val todayKey = remember { LocalDate.now().format(dateFormatter) }
+
+    LaunchedEffect(todayKey) {
+        homeViewModel.initialize(todayKey)
+    }
+
+    val sensorManager = remember {
+        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    }
+    val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    var lastStepTime by remember { mutableStateOf(0L) }
+    val stepThreshold = 13f
+    val minStepInterval = 300L
+
+    val sensorListener = remember {
+        object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+                val x = event.values[0]
+                val y = event.values[1]
+                val z = event.values[2]
+                val accel = sqrt(x * x + y * y + z * z)
+                val now = System.currentTimeMillis()
+                if (accel > stepThreshold && now - lastStepTime > minStepInterval) {
+                    homeViewModel.onStepDetected(todayKey)
+                    lastStepTime = now
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+    }
+
+    DisposableEffect(sensorManager) {
+        accelSensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI) }
+        onDispose {
+            sensorManager.unregisterListener(sensorListener)
+        }
+    }
+
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
@@ -68,6 +122,7 @@ fun MainScreen(
         ) {
             composable(Screen.Home.route) {
                 HomeScreen(
+                    homeViewModel = homeViewModel,
                     onNavigateToMap = {
                         navController.navigate("map_view")
                     },

@@ -26,12 +26,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
 import com.wildlifespotter.app.models.AddSpotEvent
 import com.wildlifespotter.app.models.AddSpotViewModel
 import com.wildlifespotter.app.ui.components.*
 import kotlinx.coroutines.flow.collectLatest
+import java.io.File
 
 @Composable
 fun AddSpotScreen() {
@@ -111,11 +113,15 @@ fun AddSpotScreen() {
         }
     )
 
+    var cameraImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview(),
-        onResult = { bitmap ->
-            if (bitmap != null) {
-                viewModel.onCameraCaptured(bitmap)
+        contract = ActivityResultContracts.TakePicture(),
+        onResult = { success ->
+            val uri = cameraImageUri
+            if (success && uri != null) {
+                viewModel.onPhotoPicked(context, uri)
+            } else {
+                cameraImageUri = null
             }
         }
     )
@@ -158,7 +164,20 @@ fun AddSpotScreen() {
                             Text("Capture Wildlife", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                             Spacer(modifier = Modifier.height(16.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Button(onClick = { cameraLauncher.launch(null) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)), shape = RoundedCornerShape(16.dp)) {
+                                Button(
+                                    onClick = {
+                                        val imageFile = File.createTempFile("camera_", ".jpg", context.cacheDir)
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.provider",
+                                            imageFile
+                                        )
+                                        cameraImageUri = uri
+                                        cameraLauncher.launch(uri)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
                                     Icon(Icons.Default.CameraAlt, null); Text(" Camera")
                                 }
                                 Button(onClick = { photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)), shape = RoundedCornerShape(16.dp)) {

@@ -1,5 +1,6 @@
 package com.wildlifespotter.app.data
 
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.wildlifespotter.app.interfaces.RetrofitInstance
@@ -7,15 +8,26 @@ import com.wildlifespotter.app.models.UserSpot
 import kotlinx.coroutines.tasks.await
 
 object MySpotsDataSource {
-    private val db = FirebaseFirestore.getInstance()
 
-    suspend fun loadUserSpots(userId: String): List<UserSpot> {
-        val snapshot = db.collection("spots")
+    suspend fun loadUserSpotsPage(
+        userId: String,
+        lastDoc: DocumentSnapshot?,
+        pageSize: Long
+    ): Pair<List<UserSpot>, DocumentSnapshot?> {
+        val db = FirebaseFirestore.getInstance()
+
+        var query = db.collection("spots")
             .whereEqualTo("user_id", userId)
-            .get()
-            .await()
+            .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(pageSize)
 
-        return snapshot.documents.map { doc ->
+        if (lastDoc != null) {
+            query = query.startAfter(lastDoc)
+        }
+
+        val snapshot = query.get().await()
+
+        val spots = snapshot.documents.map { doc ->
             val speciesRaw = doc.get("species")
             val speciesLabel = when (speciesRaw) {
                 is String -> speciesRaw
@@ -37,10 +49,15 @@ object MySpotsDataSource {
                 timestamp = doc.getTimestamp("timestamp"),
                 dailySteps = doc.getLong("daily_steps") ?: 0L
             )
-        }.sortedByDescending { it.timestamp?.seconds ?: 0L }
+        }
+
+        val newLast = snapshot.documents.lastOrNull()
+        return spots to newLast
     }
 
     suspend fun deleteSpot(spot: UserSpot) {
+        val db = FirebaseFirestore.getInstance()
+
         db.collection("spots").document(spot.id).delete().await()
         if (spot.userId.isNotBlank()) {
             db.collection("users").document(spot.userId)
@@ -50,6 +67,8 @@ object MySpotsDataSource {
     }
 
     suspend fun restoreSpot(spot: UserSpot) {
+        val db = FirebaseFirestore.getInstance()
+
         val restoreData = hashMapOf(
             "species" to mapOf(
                 "label" to spot.speciesLabel,
@@ -74,6 +93,8 @@ object MySpotsDataSource {
     }
 
     suspend fun updateDescription(spotId: String, newText: String) {
+        val db = FirebaseFirestore.getInstance()
+
         db.collection("spots")
             .document(spotId)
             .update("description", newText)

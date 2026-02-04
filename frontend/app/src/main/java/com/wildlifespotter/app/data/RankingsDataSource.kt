@@ -7,7 +7,6 @@ import com.wildlifespotter.app.models.RankingUser
 import kotlinx.coroutines.tasks.await
 
 object RankingsDataSource {
-    private val db = FirebaseFirestore.getInstance()
 
     data class PageResult(
         val users: List<RankingUser>,
@@ -22,6 +21,7 @@ object RankingsDataSource {
     )
 
     suspend fun loadPage(startAfter: DocumentSnapshot?): PageResult {
+        val db = FirebaseFirestore.getInstance()
         var query = db.collection("users")
             .orderBy("totalSpots", Query.Direction.DESCENDING)
             .limit(10)
@@ -39,6 +39,7 @@ object RankingsDataSource {
     }
 
     suspend fun computeRank(spots: Long): Int {
+        val db = FirebaseFirestore.getInstance()
         val higherSnap = db.collection("users")
             .whereGreaterThan("totalSpots", spots)
             .get()
@@ -50,6 +51,7 @@ object RankingsDataSource {
         query: String,
         cursor: DocumentSnapshot?
     ): SearchBatchResult {
+        val db = FirebaseFirestore.getInstance()
         var q = db.collection("users")
             .orderBy("username", Query.Direction.ASCENDING)
             .limit(50)
