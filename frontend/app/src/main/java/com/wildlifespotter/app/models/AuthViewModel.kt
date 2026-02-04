@@ -75,17 +75,18 @@ class AuthViewModel : ViewModel() {
 
         isLoading = true
         errorMessage = null
+        listenerActive = false
 
         auth.signInWithEmailAndPassword(email, password)
             .addOnCompleteListener { task ->
-                isLoading = false
                 if (task.isSuccessful) {
                     val firebaseUser = auth.currentUser
                     if (firebaseUser != null) {
                         val isPasswordProvider = firebaseUser.providerData.any { it.providerId == "password" }
                         if (isPasswordProvider && !firebaseUser.isEmailVerified) {
                             auth.signOut()
-                            user = null
+                            isLoading = false
+                            listenerActive = true
                             errorMessage = "Email not verified. Please verify your email before logging in."
                             return@addOnCompleteListener
                         }
@@ -94,6 +95,8 @@ class AuthViewModel : ViewModel() {
                             .document(firebaseUser.uid)
                             .get()
                             .addOnSuccessListener { doc ->
+                                isLoading = false
+                                listenerActive = true
                                 if (!doc.exists() || doc.getString("username").isNullOrBlank()) {
                                     pendingEmailUser = firebaseUser
                                     showUsernameDialog = true
@@ -105,12 +108,18 @@ class AuthViewModel : ViewModel() {
                                 }
                             }
                             .addOnFailureListener { e ->
+                                isLoading = false
+                                listenerActive = true
                                 errorMessage = e.message ?: "Error checking user data"
                             }
                     } else {
+                        isLoading = false
+                        listenerActive = true
                         errorMessage = "Error during login"
                     }
                 } else {
+                    isLoading = false
+                    listenerActive = true
                     val e = task.exception
                     errorMessage = when (e) {
                         is FirebaseAuthInvalidCredentialsException -> "Invalid credentials. If you recently changed email, verify it first and log in with the previous email."
