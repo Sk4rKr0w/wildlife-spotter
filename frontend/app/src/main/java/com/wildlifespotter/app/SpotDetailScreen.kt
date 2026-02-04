@@ -15,15 +15,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import com.wildlifespotter.app.interfaces.RetrofitInstance
-import com.google.firebase.firestore.FieldValue
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.Locale
+import com.wildlifespotter.app.models.SpotDetailViewModel
+import com.wildlifespotter.app.models.UserSpot
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,15 +31,10 @@ fun SpotDetailScreen(
     onNavigateBack: () -> Unit,
     onSpotDeleted: () -> Unit
 ) {
-    val db = FirebaseFirestore.getInstance()
-    val currentUid = remember { FirebaseAuth.getInstance().currentUser?.uid }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    
-    var spot by remember { mutableStateOf<UserSpot?>(null) }
-    var spotOwnerName by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val viewModel: SpotDetailViewModel = viewModel()
+    val uiState = viewModel.uiState
     
     // Desc Edit States
     var showEditDialog by remember { mutableStateOf(false) }
@@ -51,50 +45,11 @@ fun SpotDetailScreen(
     
     // Spot Data
     LaunchedEffect(spotId) {
-        try {
-            val doc = db.collection("spots").document(spotId).get().await()
-            if (!doc.exists()) {
-                error = "Spot not found"
-                isLoading = false
-                return@LaunchedEffect
-            }
-            
-            val speciesRaw = doc.get("species")
-            val speciesLabel = when (speciesRaw) {
-                is String -> speciesRaw
-                is Map<*, *> -> (speciesRaw["label"] as? String) ?: "Unknown species"
-                else -> "Unknown species"
-            }
-            val taxonomyRaw = when (speciesRaw) {
-                is Map<*, *> -> (speciesRaw["taxonomy"] as? Map<String, Any?>) ?: emptyMap()
-                else -> emptyMap()
-            }
-            
-            spot = UserSpot(
-                id = doc.id,
-                speciesLabel = speciesLabel.replaceFirstChar { it.uppercase() },
-                speciesTaxonomy = taxonomyRaw,
-                description = doc.getString("description") ?: "",
-                locationName = doc.getString("location_name") ?: "Unknown location",
-                imageId = doc.getString("image_id") ?: "",
-                userId = doc.getString("user_id") ?: "",
-                timestamp = doc.getTimestamp("timestamp"),
-                dailySteps = doc.getLong("daily_steps") ?: 0L
-            )
+        viewModel.loadSpot(spotId)
+    }
 
-            // Get spot owner's username
-            val ownerUid = spot!!.userId
-            if (ownerUid.isNotBlank()) {
-                val ownerDoc = db.collection("users").document(ownerUid).get().await()
-                spotOwnerName = ownerDoc.getString("username")
-            }
-
-            editedDescription = spot?.description ?: ""
-        } catch (e: Exception) {
-            error = e.message ?: "Unknown error"
-        } finally {
-            isLoading = false
-        }
+    LaunchedEffect(uiState.spot?.description) {
+        editedDescription = uiState.spot?.description ?: ""
     }
     
     Scaffold(
@@ -110,7 +65,10 @@ fun SpotDetailScreen(
                     }
                 },
                 actions = {
-                    if (spot != null && currentUid != null && spot!!.userId == currentUid) {
+                    val isOwner = uiState.spot != null &&
+                        uiState.currentUserId != null &&
+                        uiState.spot!!.userId == uiState.currentUserId
+                    if (isOwner) {
                         IconButton(onClick = { showEditDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.Edit,
@@ -119,7 +77,7 @@ fun SpotDetailScreen(
                             )
                         }
                     }
-                    if (spot != null && currentUid != null && spot!!.userId == currentUid) {
+                    if (isOwner) {
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
@@ -134,7 +92,7 @@ fun SpotDetailScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
         when {
-            isLoading -> {
+            uiState.isLoading -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -144,7 +102,7 @@ fun SpotDetailScreen(
                     CircularProgressIndicator()
                 }
             }
-            error != null -> {
+            uiState.error != null -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -152,23 +110,25 @@ fun SpotDetailScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = error ?: "Unknown error",
+                        text = uiState.error ?: "Unknown error",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
             }
-            spot != null -> {
+            uiState.spot != null -> {
                 SpotDetailContent(
-                    spot = spot!!,
-                    ownerName = spotOwnerName,
+                    spot = uiState.spot!!,
+                    ownerName = uiState.ownerName,
+                    isOwnSpot = uiState.currentUserId != null &&
+                        uiState.currentUserId == uiState.spot!!.userId,
                     modifier = Modifier.padding(paddingValues)
                 )
             }
         }
     }
     
-    if (showEditDialog && spot != null) {
+    if (showEditDialog && uiState.spot != null) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
             title = { Text("Edit Description") },
@@ -185,18 +145,16 @@ fun SpotDetailScreen(
                 TextButton(
                     onClick = {
                         scope.launch {
-                            try {
-                                db.collection("spots")
-                                    .document(spotId)
-                                    .update("description", editedDescription.trim())
-                                    .await()
-                                
-                                spot = spot?.copy(description = editedDescription.trim())
+                            val ok = viewModel.updateDescription(
+                                spotId,
+                                editedDescription.trim()
+                            )
+                            if (ok) {
                                 showEditDialog = false
                                 snackbarHostState.showSnackbar("Description updated")
-                            } catch (e: Exception) {
+                            } else {
                                 snackbarHostState.showSnackbar(
-                                    "Error: ${e.message ?: "Unknown error"}"
+                                    "Error: ${uiState.error ?: "Unknown error"}"
                                 )
                             }
                         }
@@ -222,37 +180,16 @@ fun SpotDetailScreen(
                 TextButton(
                     onClick = {
                         scope.launch {
-                                        try {
-                                db.collection("spots")
-                                    .document(spotId)
-                                    .delete()
-                                    .await()
-
-                                if (spot!!.imageId.isNotBlank()) {
-                                    try {
-                                        RetrofitInstance.api.deleteImage(spot!!.imageId)
-                                    } catch (e: Exception) {
-                                        // In case of error, log it and continue, as the main spot is already deleted
-                                        println("Failed to delete image: ${e.message}")
-                                    }
-                                }
-
-                                if (spot!!.userId.isNotBlank()) {
-                                    db.collection("users").document(spot!!.userId)
-                                        .update("totalSpots", FieldValue.increment(-1))
-                                        .await()
-                                }
-                                
+                            val deleted = viewModel.deleteSpot()
+                            if (deleted) {
                                 showDeleteDialog = false
                                 onSpotDeleted()
-                            } catch (e: Exception) {
+                            } else {
                                 showDeleteDialog = false
-                                scope.launch {
-                                    snackbarHostState.showSnackbar(
-                                        message = "Error: ${e.message ?: "Unknown error"}",
-                                        duration = SnackbarDuration.Short
-                                    )
-                                }
+                                snackbarHostState.showSnackbar(
+                                    message = "Error: ${uiState.error ?: "Unknown error"}",
+                                    duration = SnackbarDuration.Short
+                                )
                             }
                         }
                     },
@@ -276,12 +213,11 @@ fun SpotDetailScreen(
 fun SpotDetailContent(
     spot: UserSpot,
     ownerName: String?,
+    isOwnSpot: Boolean,
     modifier: Modifier = Modifier
 ) {
     val formatter = remember { SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale.getDefault()) }
     val dateText = spot.timestamp?.toDate()?.let { formatter.format(it) } ?: "Unknown date"
-    val currentUid = remember { FirebaseAuth.getInstance().currentUser?.uid }
-    val isOwnSpot = currentUid != null && currentUid == spot.userId
     
     Column(
         modifier = modifier

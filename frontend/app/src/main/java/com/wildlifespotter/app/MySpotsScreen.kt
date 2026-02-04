@@ -48,10 +48,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
-import com.google.firebase.Timestamp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -59,77 +55,26 @@ import com.wildlifespotter.app.interfaces.RetrofitInstance
 import com.wildlifespotter.app.ui.components.AnimatedWaveBackground
 import androidx.compose.material3.SnackbarDuration
 import androidx.navigation.NavBackStackEntry
-import com.google.firebase.firestore.FieldValue
-
-data class UserSpot(
-    val id: String,
-    val speciesLabel: String,
-    val speciesTaxonomy: Map<String, Any?>,
-    val description: String,
-    val locationName: String,
-    val imageId: String,
-    val userId: String,
-    val timestamp: Timestamp?,
-    val dailySteps: Long = 0L
-)
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.wildlifespotter.app.models.MySpotsViewModel
+import com.wildlifespotter.app.models.UserSpot
 
 @Composable
 fun MySpotsScreen(
     navBackStackEntry: NavBackStackEntry,
     onNavigateToSpotDetail: (String) -> Unit = {}
 ) {
-    val auth = FirebaseAuth.getInstance()
-    val db = FirebaseFirestore.getInstance()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val resetTokens = remember { mutableStateMapOf<String, Int>() }
     var editingSpot by remember { mutableStateOf<UserSpot?>(null) }
     var editedDescription by remember { mutableStateOf("") }
 
-    var spots by remember { mutableStateOf<List<UserSpot>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val viewModel: MySpotsViewModel = viewModel()
+    val uiState = viewModel.uiState
 
     LaunchedEffect(Unit) {
-        val userId = auth.currentUser?.uid
-        if (userId == null) {
-            error = "Not logged in"
-            isLoading = false
-            return@LaunchedEffect
-        }
-        try {
-            val snapshot = db.collection("spots")
-                .whereEqualTo("user_id", userId)
-                .get()
-                .await()
-
-            spots = snapshot.documents.map { doc ->
-                val speciesRaw = doc.get("species")
-                val speciesLabel = when (speciesRaw) {
-                    is String -> speciesRaw
-                    is Map<*, *> -> (speciesRaw["label"] as? String) ?: "Unknown species"
-                    else -> "Unknown species"
-                }
-                val taxonomyRaw = when (speciesRaw) {
-                    is Map<*, *> -> (speciesRaw["taxonomy"] as? Map<String, Any?>) ?: emptyMap()
-                    else -> emptyMap()
-                }
-                UserSpot(
-                    id = doc.id,
-                    speciesLabel = speciesLabel.replaceFirstChar { it.uppercase() },                    speciesTaxonomy = taxonomyRaw,
-                    description = doc.getString("description") ?: "",
-                    locationName = doc.getString("location_name") ?: "Unknown location",
-                    imageId = doc.getString("image_id") ?: "",
-                    userId = userId,
-                    timestamp = doc.getTimestamp("timestamp"),
-                    dailySteps = doc.getLong("daily_steps") ?: 0L
-                )
-            }.sortedByDescending { it.timestamp?.seconds ?: 0L }
-        } catch (e: Exception) {
-            error = e.message ?: "Unknown error"
-        } finally {
-            isLoading = false
-        }
+        viewModel.loadSpots()
     }
 
     LaunchedEffect(navBackStackEntry) {
@@ -170,7 +115,7 @@ fun MySpotsScreen(
             )
 
             when {
-                isLoading -> {
+                uiState.isLoading -> {
                     Column(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.Center,
@@ -179,14 +124,14 @@ fun MySpotsScreen(
                         CircularProgressIndicator()
                     }
                 }
-                error != null -> {
+                uiState.error != null -> {
                     Text(
-                        text = error ?: "Unknown error",
+                        text = uiState.error ?: "Unknown error",
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 12.dp)
                     )
                 }
-                spots.isEmpty() -> {
+                uiState.spots.isEmpty() -> {
                     Text(
                         text = "No spots yet",
                         modifier = Modifier.padding(top = 12.dp)
@@ -197,7 +142,7 @@ fun MySpotsScreen(
                         contentPadding = PaddingValues(vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(spots, key = { it.id }) { spot ->
+                        items(uiState.spots, key = { it.id }) { spot ->
                             SwipeToDeleteSpot(
                                 spot = spot,
                                 onClick = { onNavigateToSpotDetail(spot.id) },
@@ -208,22 +153,9 @@ fun MySpotsScreen(
                                 },
                                 onDelete = {
                                     val removedSpot = spot
-                                    spots = spots.filterNot { it.id == removedSpot.id }
                                     scope.launch {
-                                        try {
-                                            db.collection("spots").document(removedSpot.id).delete().await()
-
-                                            if (removedSpot.userId.isNotBlank()) {
-                                                db.collection("users").document(removedSpot.userId)
-                                                    .update("totalSpots", FieldValue.increment(-1))
-                                                    .await()
-                                            }
-                                        } catch (e: Exception) {
-                                            error = e.message ?: "Delete failed"
-                                            spots = (listOf(removedSpot) + spots)
-                                                .sortedByDescending { it.timestamp?.seconds ?: 0L }
-                                            return@launch
-                                        }
+                                        val deleted = viewModel.deleteSpot(removedSpot)
+                                        if (!deleted) return@launch
 
                                         snackbarHostState.currentSnackbarData?.dismiss()
                                         val result = snackbarHostState.showSnackbar(
@@ -232,43 +164,13 @@ fun MySpotsScreen(
                                             duration = SnackbarDuration.Short
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
-                                            val restoreData = hashMapOf(
-                                                "species" to mapOf(
-                                                    "label" to removedSpot.speciesLabel,
-                                                    "taxonomy" to removedSpot.speciesTaxonomy
-                                                ),
-                                                "description" to removedSpot.description,
-                                                "location_name" to removedSpot.locationName,
-                                                "image_id" to removedSpot.imageId,
-                                                "user_id" to removedSpot.userId,
-                                                "timestamp" to removedSpot.timestamp
-                                            )
-                                            try {
-                                                db.collection("spots")
-                                                    .document(removedSpot.id)
-                                                    .set(restoreData)
-                                                    .await()
-
-                                                if (removedSpot.userId.isNotBlank()) {
-                                                    db.collection("users").document(removedSpot.userId)
-                                                        .update("totalSpots", FieldValue.increment(1))
-                                                        .await()
-                                                }
-
-                                                spots = (listOf(removedSpot) + spots)
-                                                    .sortedByDescending { it.timestamp?.seconds ?: 0L }
+                                            val restored = viewModel.undoDelete(removedSpot)
+                                            if (restored) {
                                                 resetTokens[removedSpot.id] =
                                                     (resetTokens[removedSpot.id] ?: 0) + 1
-                                            } catch (e: Exception) {
-                                                error = e.message ?: "Undo failed"
                                             }
-                                        } else if (removedSpot.imageId.isNotBlank()) {
-                                            // Snackbar expired
-                                            try {
-                                                RetrofitInstance.api.deleteImage(removedSpot.imageId)
-                                            } catch (e: Exception) {
-                                                println("Failed to delete image: ${e.message}")
-                                            }
+                                        } else {
+                                            viewModel.finalizeDeleteImage(removedSpot)
                                         }
                                     }
                                 }
@@ -296,17 +198,7 @@ fun MySpotsScreen(
                             val newText = editedDescription.trim()
                             editingSpot = null
                             scope.launch {
-                                try {
-                                    db.collection("spots")
-                                        .document(spot.id)
-                                        .update("description", newText)
-                                        .await()
-                                    spots = spots.map {
-                                        if (it.id == spot.id) it.copy(description = newText) else it
-                                    }
-                                } catch (e: Exception) {
-                                    error = e.message ?: "Update failed"
-                                }
+                                viewModel.updateDescription(spot, newText)
                             }
                         }
                     ) {

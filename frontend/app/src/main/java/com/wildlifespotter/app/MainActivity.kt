@@ -24,8 +24,6 @@ import androidx.navigation.compose.rememberNavController
 import com.wildlifespotter.app.ui.signup.SignUp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wildlifespotter.app.models.AuthViewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -93,36 +91,21 @@ fun AppNavigation() {
             // ----- LoadingScreen -----
             composable("loading") {
                 LaunchedEffect(Unit) {
-                    val currentUser = FirebaseAuth.getInstance().currentUser
-                    if (currentUser != null) {
-                        val db = FirebaseFirestore.getInstance()
-                        db.collection("users")
-                            .document(currentUser.uid)
-                            .get()
-                            .addOnSuccessListener { doc ->
-                                if (doc.exists() && !doc.getString("username").isNullOrBlank()) {
-                                    navController.navigate("home") {
-                                        popUpTo("loading") { inclusive = true }
-                                    }
-                                } else {
-                                    authViewModel.user = currentUser
-                                    authViewModel.pendingEmailUser = currentUser
-                                    if (!doc.exists() || doc.getString("username").isNullOrBlank()) {
-                                        authViewModel.showUsernameDialog = true
-                                    }
-                                    navController.navigate("home") {
-                                        popUpTo("loading") { inclusive = true }
-                                    }
-                                }
+                    when (authViewModel.resolveStartupDestination()) {
+                        is AuthViewModel.StartupDestination.Home -> {
+                            navController.navigate("home") {
+                                popUpTo("loading") { inclusive = true }
                             }
-                            .addOnFailureListener {
-                                navController.navigate("sign_in") {
-                                    popUpTo("loading") { inclusive = true }
-                                }
+                        }
+                        is AuthViewModel.StartupDestination.Onboarding -> {
+                            navController.navigate("onboarding") {
+                                popUpTo("loading") { inclusive = true }
                             }
-                    } else {
-                        navController.navigate("onboarding") {
-                            popUpTo("loading") { inclusive = true }
+                        }
+                        is AuthViewModel.StartupDestination.SignIn -> {
+                            navController.navigate("sign_in") {
+                                popUpTo("loading") { inclusive = true }
+                            }
                         }
                     }
                 }

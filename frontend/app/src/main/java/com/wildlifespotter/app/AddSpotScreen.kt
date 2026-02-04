@@ -1,14 +1,7 @@
 package com.wildlifespotter.app
 
-import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
-import android.location.Geocoder
-import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -31,54 +24,31 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
-import com.firebase.geofire.GeoFireUtils
-import com.firebase.geofire.GeoLocation
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.wildlifespotter.app.interfaces.IdentifyTaxonomy
-import com.wildlifespotter.app.interfaces.RetrofitInstance
+import com.wildlifespotter.app.models.AddSpotEvent
+import com.wildlifespotter.app.models.AddSpotViewModel
 import com.wildlifespotter.app.ui.components.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.ByteArrayOutputStream
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun AddSpotScreen() {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
-    val db = FirebaseFirestore.getInstance()
-    val auth = FirebaseAuth.getInstance()
+    val viewModel: AddSpotViewModel = viewModel()
+    val uiState = viewModel.uiState
 
     // ---------- UI States ----------
-    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var compressedImage by remember { mutableStateOf<ByteArray?>(null) }
-    var speciesLabel by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    var isAnalyzingImage by remember { mutableStateOf(false) }
-    var locationAvailable by remember { mutableStateOf(true) }
-    var showLocationDialog by remember { mutableStateOf(false) }
-
-    // ---------- Location ----------
-    var locationName by remember { mutableStateOf("Getting location...") }
-    var latitude by remember { mutableDoubleStateOf(0.0) }
-    var longitude by remember { mutableDoubleStateOf(0.0) }
+    val selectedImageUri = uiState.selectedImageUri
+    val compressedImage = uiState.compressedImage
+    val description = uiState.description
+    val isLoading = uiState.isLoading
+    val isAnalyzingImage = uiState.isAnalyzingImage
+    val locationAvailable = uiState.locationAvailable
+    val showLocationDialog = uiState.showLocationDialog
+    val locationName = uiState.locationName
 
     // ---------- Sensors ----------
     var currentAzimuth by remember { mutableFloatStateOf(0f) }
@@ -121,29 +91,13 @@ fun AddSpotScreen() {
     }
 
     LaunchedEffect(Unit) {
-        while (true) {
-            getFastLocation(context) { lat, lng, name ->
-                latitude = lat
-                longitude = lng
-                locationName = name
-                val isValid = lat != 0.0 && lng != 0.0 && 
-                              !name.contains("unavailable", ignoreCase = true) &&
-                              !name.contains("Error", ignoreCase = true)
-                locationAvailable = isValid
-                showLocationDialog = !isValid
-            }
-            kotlinx.coroutines.delay(2000)
-        }
+        viewModel.startLocationUpdates(context)
     }
 
-    // ---------- Image Pickers Logic ----------
-    val onImageCaptured: (ByteArray?) -> Unit = { compressed ->
-        if (compressed != null) {
-            compressedImage = compressed
-            isAnalyzingImage = true
-            scope.launch {
-                kotlinx.coroutines.delay(500)
-                isAnalyzingImage = false
+    LaunchedEffect(Unit) {
+        viewModel.events.collectLatest { event ->
+            when (event) {
+                is AddSpotEvent.Message -> Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -152,11 +106,7 @@ fun AddSpotScreen() {
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
             if (uri != null) {
-                selectedImageUri = uri
-                scope.launch {
-                    val compressed = compressImage(context, uri)
-                    onImageCaptured(compressed)
-                }
+                viewModel.onPhotoPicked(context, uri)
             }
         }
     )
@@ -165,9 +115,7 @@ fun AddSpotScreen() {
         contract = ActivityResultContracts.TakePicturePreview(),
         onResult = { bitmap ->
             if (bitmap != null) {
-                selectedImageUri = null
-                val compressed = compressBitmap(bitmap)
-                onImageCaptured(compressed)
+                viewModel.onCameraCaptured(bitmap)
             }
         }
     )
@@ -237,7 +185,7 @@ fun AddSpotScreen() {
             ) {
                 OutlinedTextField(
                     value = description,
-                    onValueChange = { description = it },
+                    onValueChange = { viewModel.updateDescription(it) },
                     label = { Text("Observation Notes") },
                     placeholder = { Text("What did you see? Describe the behavior...") },
                     modifier = Modifier
@@ -285,23 +233,7 @@ fun AddSpotScreen() {
             // ---------- Action Button ----------
             Button(
                 onClick = {
-                    scope.launch {
-                        if (compressedImage == null) return@launch
-                        isLoading = true
-                        uploadSpotWithBytes(
-                            context, compressedImage!!, "", description,
-                            latitude, longitude, locationName, currentAzimuth
-                        ) { success, msg ->
-                            isLoading = false
-                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                            if (success) {
-                                description = ""
-                                compressedImage = null
-                                selectedImageUri = null
-                                locationName = "Getting location..."
-                            }
-                        }
-                    }
+                    viewModel.submit(currentAzimuth)
                 },
                 enabled = !isLoading && compressedImage != null && locationAvailable,
                 modifier = Modifier.fillMaxWidth().height(60.dp),
@@ -344,108 +276,4 @@ fun AddSpotScreen() {
             )
         }
     }
-}
-
-// ------------------------ Helpers ------------------------
-
-suspend fun compressImage(context: Context, uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
-    try {
-        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri))
-        } else {
-            MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
-        }
-        compressBitmap(bitmap)
-    } catch (e: Exception) { e.printStackTrace(); null }
-}
-
-fun compressBitmap(bitmap: Bitmap, maxSize: Int = 1024, quality: Int = 92): ByteArray {
-    val ratio = maxOf(bitmap.width, bitmap.height).toFloat() / maxSize
-    val scaled = Bitmap.createScaledBitmap(bitmap, (bitmap.width / ratio).toInt(), (bitmap.height / ratio).toInt(), true)
-    val baos = ByteArrayOutputStream()
-    scaled.compress(Bitmap.CompressFormat.JPEG, quality, baos)
-    return baos.toByteArray()
-}
-
-@SuppressLint("MissingPermission")
-suspend fun getFastLocation(context: Context, onResult: (Double, Double, String) -> Unit) {
-    val client = LocationServices.getFusedLocationProviderClient(context)
-    try {
-        val last = client.lastLocation.await() ?: client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null).await()
-        if (last != null) {
-            val name = reverseGeocode(context, last.latitude, last.longitude) ?: "Unknown Location"
-            onResult(last.latitude, last.longitude, name)
-        } else onResult(0.0, 0.0, "Location unavailable")
-    } catch (e: Exception) { onResult(0.0, 0.0, "Error") }
-}
-
-suspend fun reverseGeocode(context: Context, lat: Double, lng: Double): String? = withContext(Dispatchers.IO) {
-    try {
-        val addresses = Geocoder(context, Locale.getDefault()).getFromLocation(lat, lng, 1)
-        addresses?.firstOrNull()?.let { "${it.locality ?: ""}-${it.subLocality ?: it.subAdminArea ?: ""}" }
-    } catch (e: Exception) { null }
-}
-
-suspend fun uploadSpotWithBytes(
-    context: Context, bytes: ByteArray, species: String, description: String,
-    latitude: Double, longitude: Double, locationName: String, azimuth: Float,
-    onComplete: (Boolean, String) -> Unit
-) {
-    val db = FirebaseFirestore.getInstance()
-    val auth = FirebaseAuth.getInstance()
-    try {
-        val imagePart = MultipartBody.Part.createFormData("image", "upload.jpg", bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()))
-        val uploadRes = RetrofitInstance.api.uploadImage(imagePart)
-        val imageId = uploadRes.id
-        val userId = auth.currentUser?.uid
-
-
-        val countryCode = if (userId != null) {
-            db.collection("users").document(userId).get().await().getString("country") ?: "ITA"
-        } else "ITA"
-
-
-        val identifyRes = try { RetrofitInstance.api.identifyImage(imageId, countryCode) } catch (e: Exception) { null }
-        val annotation = identifyRes?.annotations?.firstOrNull()
-        val label = annotation?.label?.takeIf { it.isNotBlank() } ?: (if(species.isBlank()) "Unknown Species" else species)
-
-        val geohash = GeoFireUtils.getGeoHashForLocation(GeoLocation(latitude, longitude))
-
-        // Daily steps from firestore
-        val todayKey = LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"))
-        val dailySteps = if (userId != null) {
-            db.collection("users")
-                .document(userId)
-                .collection("steps")
-                .document(todayKey)
-                .get()
-                .await()
-                .getLong("dailySteps") ?: 0L
-        } else 0L
-
-        val spotData = hashMapOf(
-            "species" to mapOf("label" to label, "taxonomy" to taxonomyToMap(annotation?.taxonomy)),
-            "description" to description,
-            "latitude" to latitude,
-            "longitude" to longitude,
-            "location_name" to locationName,
-            "geohash" to geohash,
-            "timestamp" to FieldValue.serverTimestamp(),
-            "image_id" to imageId,
-            "user_id" to (userId ?: "anonymous"),
-            "daily_steps" to dailySteps,
-            "sensor_data" to mapOf("compass_azimuth" to azimuth)
-        )
-
-        db.collection("spots").add(spotData).await()
-        if (userId != null) {
-            db.collection("users").document(userId).set(mapOf("totalSpots" to FieldValue.increment(1)), com.google.firebase.firestore.SetOptions.merge()).await()
-        }
-        onComplete(true, if(annotation?.label != null) "Identified: ${annotation.label}" else "Spot added!")
-    } catch (e: Exception) { onComplete(false, "Error: ${e.message}") }
-}
-
-fun taxonomyToMap(taxonomy: IdentifyTaxonomy?): Map<String, Any?> {
-    if (taxonomy == null) return emptyMap()
-    return mapOf("id" to taxonomy.id, "class" to taxonomy.className, "order" to taxonomy.order, "family" to taxonomy.family, "genus" to taxonomy.genus, "species" to taxonomy.species)
 }

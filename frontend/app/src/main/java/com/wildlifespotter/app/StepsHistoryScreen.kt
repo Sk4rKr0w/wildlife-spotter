@@ -1,6 +1,5 @@
 package com.wildlifespotter.app
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,52 +18,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wildlifespotter.app.ui.components.AnimatedWaveBackground
 import com.wildlifespotter.app.ui.components.FloatingParticles
-import kotlinx.coroutines.tasks.await
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import com.wildlifespotter.app.models.StepsHistoryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StepsHistoryScreen(onBackClick: () -> Unit) {
-    val auth = remember { FirebaseAuth.getInstance() }
-    val db = remember { FirebaseFirestore.getInstance() }
-    var historySteps by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
-    var isLoadingSteps by remember { mutableStateOf(true) }
+    val viewModel: StepsHistoryViewModel = viewModel()
+    val uiState = viewModel.uiState
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd-MM-yyyy") }
-    val todayKey = remember { LocalDate.now().format(dateFormatter) }
+    val todayKey = remember { java.time.LocalDate.now().format(dateFormatter) }
 
     LaunchedEffect(Unit) {
-        val userId = auth.currentUser?.uid
-        if (userId != null) {
-            try {
-                val snapshot = db.collection("users")
-                    .document(userId)
-                    .collection("steps")
-                    .get()
-                    .await()
-
-                val map = mutableMapOf<String, Long>()
-                for (doc in snapshot.documents) {
-                    val steps = doc.getLong("dailySteps") ?: 0L
-                    if (steps > 0) {
-                        map[doc.id] = steps
-                    }
-                }
-                historySteps = map
-                Log.d("StepsHistory", "Loaded ${map.size} days with steps")
-            } catch (e: Exception) {
-                Log.e("StepsHistory", "Failed to load history", e)
-            } finally {
-                isLoadingSteps = false
-            }
-        } else {
-            isLoadingSteps = false
-        }
+        viewModel.loadHistory()
     }
 
     val backgroundGradient = Brush.verticalGradient(
@@ -121,14 +91,14 @@ fun StepsHistoryScreen(onBackClick: () -> Unit) {
                     .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
-                if (isLoadingSteps) {
+                if (uiState.isLoading) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(color = Color(0xFF4CAF50))
                     }
-                } else if (historySteps.isEmpty()) {
+                } else if (uiState.historySteps.isEmpty()) {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -160,8 +130,8 @@ fun StepsHistoryScreen(onBackClick: () -> Unit) {
                         }
                     }
                 } else {
-                    val totalStepsAllTime = historySteps.values.sum()
-                    val daysWithSteps = historySteps.filter { it.value > 0 }.size
+                    val totalStepsAllTime = uiState.historySteps.values.sum()
+                    val daysWithSteps = uiState.historySteps.filter { it.value > 0 }.size
                     val averageSteps = if (daysWithSteps > 0) totalStepsAllTime / daysWithSteps else 0L
 
                     Card(
@@ -259,7 +229,7 @@ fun StepsHistoryScreen(onBackClick: () -> Unit) {
 
                             Spacer(Modifier.height(16.dp))
 
-                            historySteps
+                            uiState.historySteps
                                 .toSortedMap(compareByDescending { it })
                                 .forEach { (date, steps) ->
                                     val isToday = date == todayKey
@@ -291,7 +261,7 @@ fun StepsHistoryScreen(onBackClick: () -> Unit) {
                                         )
                                     }
 
-                                    if (date != historySteps.keys.minOrNull()) {
+                                    if (date != uiState.historySteps.keys.minOrNull()) {
                                         Divider(
                                             modifier = Modifier.padding(vertical = 4.dp),
                                             color = Color.Gray.copy(alpha = 0.3f)

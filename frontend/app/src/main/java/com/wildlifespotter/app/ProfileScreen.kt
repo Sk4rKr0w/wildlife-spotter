@@ -26,19 +26,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.content.Context
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.firebase.auth.GoogleAuthProvider
-import com.google.firebase.auth.EmailAuthProvider
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.UserProfileChangeRequest
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FieldValue
 import com.wildlifespotter.app.models.AuthViewModel
+import com.wildlifespotter.app.models.ProfileViewModel
 import com.wildlifespotter.app.ui.components.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,11 +37,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun ProfileScreen(onLogout: () -> Unit) {
     val context = LocalContext.current
     val authViewModel: AuthViewModel = viewModel()
-
-    /* ---------------- Firebase ---------------- */
-    val auth = FirebaseAuth.getInstance()
-    val db = FirebaseFirestore.getInstance()
-    val user = auth.currentUser
+    val profileViewModel: ProfileViewModel = viewModel()
+    val profileState = profileViewModel.uiState
 
     /* ---------------- Coroutine ---------------- */
     val scope = rememberCoroutineScope()
@@ -82,32 +70,21 @@ fun ProfileScreen(onLogout: () -> Unit) {
     val primary = Color(0xFF4CAF50)
     val accent = Color(0xFFFFC107)
     val error = Color(0xFFE53935)
-    val supportsPassword = user?.providerData?.any { it.providerId == "password" } == true
+    val supportsPassword = profileState.supportsPassword
 
     /* ---------------- Load User ---------------- */
     LaunchedEffect(Unit) {
-        user?.let { firebaseUser ->
-            try {
-                val userDoc = db.collection("users")
-                    .document(firebaseUser.uid)
-                    .get()
-                    .await()
-                
-                if (userDoc.exists()) {
-                    username = userDoc.getString("username") ?: firebaseUser.displayName ?: "User"
-                    email = userDoc.getString("email") ?: firebaseUser.email ?: ""
-                } else {
-                    username = firebaseUser.displayName ?: "User"
-                    email = firebaseUser.email ?: ""
-                }
-            } catch (e: Exception) {
-                username = firebaseUser.displayName ?: "User"
-                email = firebaseUser.email ?: ""
-            }
+        profileViewModel.loadProfile()
+    }
+
+    LaunchedEffect(profileState.isLoadingProfile, profileState.username, profileState.email) {
+        if (!profileState.isLoadingProfile) {
+            username = profileState.username
+            email = profileState.email
+            originalEmail = profileState.email
+            originalUsername = profileState.username
+            isLoadingProfile = false
         }
-        originalEmail = email
-        originalUsername = username
-        isLoadingProfile = false
     }
 
     /* ---------------- UI ---------------- */
@@ -277,35 +254,36 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                 (showPasswordFields && (currentPassword.isNotBlank() || newPassword.isNotBlank() || confirmPassword.isNotBlank()))
                         ) {
                             scope.launch {
-                                saveProfile(
-                                    context,
-                                    user,
-                                    db,
-                                    username,
-                                    email,
-                                    showPasswordFields,
-                                    currentPassword,
-                                    newPassword,
-                                    confirmPassword,
-                                    onSuccess = { msg, shouldLogout ->
-                                        message = msg
+                                isLoading = true
+                                profileViewModel.saveProfile(
+                                    context = context,
+                                    username = username,
+                                    email = email,
+                                    changePassword = showPasswordFields,
+                                    currentPassword = currentPassword,
+                                    newPassword = newPassword,
+                                    confirmPassword = confirmPassword
+                                ) { result ->
+                                    isLoading = false
+                                    if (result.success) {
+                                        message = result.message
                                         messageType = MessageType.SUCCESS
                                         isEditMode = false
                                         showPasswordFields = false
                                         currentPassword = ""
                                         newPassword = ""
                                         confirmPassword = ""
-                                        if (shouldLogout) {
+                                        originalUsername = username
+                                        originalEmail = email
+                                        if (result.shouldLogout) {
                                             authViewModel.logout(context)
                                             onLogout()
                                         }
-                                    },
-                                    onError = {
-                                        message = it
+                                    } else {
+                                        message = result.message
                                         messageType = MessageType.ERROR
-                                    },
-                                    setLoading = { isLoading = it }
-                                )
+                                    }
+                                }
                             }
                         }
                     }
@@ -317,7 +295,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
             /* ---------------- Logout Button ---------------- */
             Button(
                 onClick = {
-                    auth.signOut()
+                    authViewModel.logout(context)
                     onLogout()
                 },
                 modifier = Modifier
@@ -398,135 +376,6 @@ fun AnimatedProfileAvatar(
                 color = Color.White
             )
         }
-    }
-}
-
-/* ---------------- Helpers ---------------- */
-
-suspend fun saveProfile(
-    context: Context,
-    user: com.google.firebase.auth.FirebaseUser?,
-    db: FirebaseFirestore,
-    username: String,
-    email: String,
-    changePassword: Boolean,
-    currentPassword: String,
-    newPassword: String,
-    confirmPassword: String,
-    onSuccess: (String, Boolean) -> Unit,
-    onError: (String) -> Unit,
-    setLoading: (Boolean) -> Unit
-) {
-    if (user == null) return
-    try {
-        setLoading(true)
-
-        val needsReauth = changePassword || email != user.email
-        if (needsReauth) {
-            val supportsPassword = user.providerData.any { it.providerId == "password" }
-            if (supportsPassword) {
-                if (currentPassword.isBlank()) {
-                    onError("Current password required to update email or password")
-                    return
-                }
-                val credential = EmailAuthProvider.getCredential(
-                    user.email ?: "", currentPassword
-                )
-                user.reauthenticate(credential).await()
-            } else {
-                val resId = context.resources.getIdentifier(
-                    "default_web_client_id",
-                    "string",
-                    context.packageName
-                )
-                if (resId == 0) {
-                    onError("Missing default_web_client_id")
-                    return
-                }
-                val webClientId = context.getString(resId)
-                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                    .requestIdToken(webClientId)
-                    .requestEmail()
-                    .build()
-                val client = GoogleSignIn.getClient(context, gso)
-                val account = try {
-                    client.silentSignIn().await()
-                } catch (e: Exception) {
-                    null
-                }
-                val idToken = account?.idToken
-                if (idToken.isNullOrBlank()) {
-                    onError("Re-authentication required. Please sign in again.")
-                    return
-                }
-                val credential = GoogleAuthProvider.getCredential(idToken, null)
-                user.reauthenticate(credential).await()
-            }
-        }
-
-        if (changePassword) {
-            if (newPassword != confirmPassword) {
-                onError("Passwords don't match")
-                return
-            }
-            user.updatePassword(newPassword).await()
-        }
-
-        val emailChanged = email != user.email
-        val supportsPassword = user.providerData.any { it.providerId == "password" }
-        if (emailChanged && !supportsPassword) {
-            onError("Email change not available for Google accounts")
-            return
-        }
-        if (emailChanged) {
-            user.verifyBeforeUpdateEmail(email).await()
-        }
-
-        val usernameChanged = username != user.displayName
-        if (usernameChanged) {
-            val existing = db.collection("users")
-                .whereEqualTo("username", username)
-                .get()
-                .await()
-            val conflict = existing.documents.any { it.id != user.uid }
-            if (conflict) {
-                onError("Username already taken")
-                return
-            }
-            val profileUpdates = UserProfileChangeRequest.Builder()
-                .setDisplayName(username)
-                .build()
-            user.updateProfile(profileUpdates).await()
-        }
-
-        val data = hashMapOf(
-            "username" to username,
-            "username_lower" to username.lowercase(),
-            "uid" to user.uid,
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
-        if (!emailChanged) {
-            data["email"] = email
-            data.remove("pendingEmail")
-        } else {
-            data["pendingEmail"] = email
-        }
-
-        db.collection("users")
-            .document(user.uid)
-            .set(data, com.google.firebase.firestore.SetOptions.merge())
-            .await()
-
-        val shouldLogout = emailChanged || changePassword
-        if (emailChanged) {
-            onSuccess("Verification email sent. Check your inbox to update the email.", shouldLogout)
-        } else {
-            onSuccess("Profile updated successfully!", shouldLogout)
-        }
-    } catch (e: Exception) {
-        onError(e.message ?: "Unknown error")
-    } finally {
-        setLoading(false)
     }
 }
 

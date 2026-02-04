@@ -6,7 +6,6 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.location.Geocoder
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
@@ -27,91 +26,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.android.gms.location.LocationServices
 import com.wildlifespotter.app.ui.components.*
+import com.wildlifespotter.app.models.HomeViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.sqrt
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.launch
-
-class StepCounter(
-    private val context: Context,
-    private val db: FirebaseFirestore,
-    private val userId: String,
-    private val todayKey: String
-) {
-    private var _dailySteps = 0
-    private var _totalSteps = 0L
-    private var _baselineTotal = 0L  // Totale al momento del caricamento iniziale
-
-    val dailySteps: Int get() = _dailySteps
-    val totalSteps: Long get() = _baselineTotal + _dailySteps.toLong()
-
-    var onStepsChanged: ((daily: Int, total: Long) -> Unit)? = null
-
-    suspend fun initialize() {
-        try {
-            val todayDoc = db.collection("users")
-                .document(userId)
-                .collection("steps")
-                .document(todayKey)
-                .get()
-                .await()
-            _dailySteps = todayDoc.getLong("dailySteps")?.toInt() ?: 0
-
-            val userDoc = db.collection("users")
-                .document(userId)
-                .get()
-                .await()
-            _baselineTotal = userDoc.getLong("totalSteps") ?: 0L
-
-            _baselineTotal -= _dailySteps.toLong()
-
-            Log.d("StepCounter", "Initialized: daily=$_dailySteps, baseline=$_baselineTotal, total=${totalSteps}")
-            notifyChange()
-        } catch (e: Exception) {
-            Log.e("StepCounter", "Failed to initialize", e)
-        }
-    }
-
-    fun increment() {
-        _dailySteps++
-        notifyChange()
-    }
-
-    suspend fun sync() {
-        try {
-            db.collection("users")
-                .document(userId)
-                .collection("steps")
-                .document(todayKey)
-                .set(mapOf(
-                    "dailySteps" to _dailySteps.toLong(),
-                    "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                ))
-                .await()
-
-            db.collection("users")
-                .document(userId)
-                .set(mapOf(
-                    "totalSteps" to totalSteps,
-                    "stepsUpdatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                ), com.google.firebase.firestore.SetOptions.merge())
-                .await()
-
-            Log.d("StepCounter", "Synced: daily=$_dailySteps, total=$totalSteps")
-        } catch (e: Exception) {
-            Log.e("StepCounter", "Failed to sync", e)
-        }
-    }
-
-    private fun notifyChange() {
-        onStepsChanged?.invoke(_dailySteps, totalSteps)
-    }
-}
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun HomeScreen(
@@ -122,35 +44,14 @@ fun HomeScreen(
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
 
-    var dailySteps by remember { mutableStateOf(0) }
-    var totalSteps by remember { mutableStateOf(0L) }
-    var isLoadingSteps by remember { mutableStateOf(true) }
+    val viewModel: HomeViewModel = viewModel()
+    val uiState = viewModel.uiState
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd-MM-yyyy") }
     val todayKey = remember { LocalDate.now().format(dateFormatter) }
 
-    val auth = remember { FirebaseAuth.getInstance() }
-    val db = remember { FirebaseFirestore.getInstance() }
-
-    val stepCounter = remember(todayKey) {
-        val userId = auth.currentUser?.uid ?: return@remember null
-        StepCounter(context, db, userId, todayKey).apply {
-            onStepsChanged = { daily, total ->
-                dailySteps = daily
-                totalSteps = total
-            }
-        }
-    }
-
-    LaunchedEffect(stepCounter) {
-        stepCounter?.initialize()
-        isLoadingSteps = false
-    }
-
-    LaunchedEffect(dailySteps) {
-        if (dailySteps > 0 && dailySteps % 10 == 0) {
-            stepCounter?.sync()
-        }
+    LaunchedEffect(todayKey) {
+        viewModel.initialize(todayKey)
     }
 
     val sensorManager = remember {
@@ -190,7 +91,7 @@ fun HomeScreen(
                         val accel = sqrt(x * x + y * y + z * z)
                         val now = System.currentTimeMillis()
                         if (accel > stepThreshold && now - lastStepTime > minStepInterval) {
-                            stepCounter?.increment()
+                            viewModel.onStepDetected(todayKey)
                             lastStepTime = now
                         }
 
@@ -220,9 +121,6 @@ fun HomeScreen(
 
         onDispose {
             sensorManager.unregisterListener(sensorListener)
-            scope.launch {
-                stepCounter?.sync()
-            }
         }
     }
 
@@ -366,14 +264,14 @@ fun HomeScreen(
 
                     Spacer(Modifier.height(24.dp))
 
-                    if (isLoadingSteps) {
+                    if (uiState.isLoadingSteps) {
                         CircularProgressIndicator(
                             color = Color(0xFF4CAF50),
                             modifier = Modifier.size(150.dp)
                         )
                     } else {
                         CircularStepIndicator(
-                            currentSteps = dailySteps,
+                            currentSteps = uiState.dailySteps,
                             goalSteps = 10000,
                             size = 150f
                         )
@@ -419,7 +317,7 @@ fun HomeScreen(
                         )
                     }
 
-                    if (isLoadingSteps) {
+                    if (uiState.isLoadingSteps) {
                         CircularProgressIndicator(
                             color = Color(0xFF4CAF50),
                             modifier = Modifier
@@ -428,7 +326,7 @@ fun HomeScreen(
                         )
                     } else {
                         Text(
-                            totalSteps.toString(),
+                            uiState.totalSteps.toString(),
                             color = Color(0xFF4CAF50),
                             fontSize = 48.sp,
                             fontWeight = FontWeight.Bold,

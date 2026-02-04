@@ -63,6 +63,12 @@ class AuthViewModel : ViewModel() {
 
     var registrationState by mutableStateOf<RegistrationState>(RegistrationState.IDLE)
 
+    sealed class StartupDestination {
+        object Home : StartupDestination()
+        object Onboarding : StartupDestination()
+        object SignIn : StartupDestination()
+    }
+
 
     fun login() {
         if (email.isBlank() || password.isBlank()) return
@@ -113,6 +119,29 @@ class AuthViewModel : ViewModel() {
                     }
                 }
             }
+    }
+
+    suspend fun resolveStartupDestination(): StartupDestination {
+        val currentUser = auth.currentUser
+        if (currentUser == null) return StartupDestination.Onboarding
+        return try {
+            val doc = db.collection("users")
+                .document(currentUser.uid)
+                .get()
+                .await()
+            if (doc.exists() && !doc.getString("username").isNullOrBlank()) {
+                StartupDestination.Home
+            } else {
+                user = currentUser
+                pendingEmailUser = currentUser
+                if (!doc.exists() || doc.getString("username").isNullOrBlank()) {
+                    showUsernameDialog = true
+                }
+                StartupDestination.Home
+            }
+        } catch (_: Exception) {
+            StartupDestination.SignIn
+        }
     }
 
     fun checkEmailAvailable(emailInput: String, onResult: (Boolean, String?) -> Unit) {

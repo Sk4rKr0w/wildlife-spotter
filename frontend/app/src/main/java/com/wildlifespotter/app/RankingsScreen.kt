@@ -14,148 +14,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.DocumentSnapshot
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.wildlifespotter.app.models.RankingUser
+import com.wildlifespotter.app.models.RankingsViewModel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
-
-private data class RankingUser(
-    val id: String,
-    val username: String,
-    val spots: Long,
-    val steps: Long,
-    val globalRank: Int? = null
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RankingsScreen() {
-    val db = remember { FirebaseFirestore.getInstance() }
-    val scope = rememberCoroutineScope()
-    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+    val viewModel: RankingsViewModel = viewModel()
+    val uiState = viewModel.uiState
+    val currentUserId = viewModel.currentUserId
 
-    var isLoading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var users by remember { mutableStateOf<List<RankingUser>>(emptyList()) }
+    LaunchedEffect(Unit) { viewModel.loadPage(reset = true) }
 
-    val pageCursors = remember { mutableStateListOf<DocumentSnapshot>() }
-    var currentPage by remember { mutableStateOf(0) }
-
-    var searchUsername by remember { mutableStateOf("") }
-    var isSearching by remember { mutableStateOf(false) }
-    var searchResults by remember { mutableStateOf<List<RankingUser>>(emptyList()) }
-    var searchCursor by remember { mutableStateOf<DocumentSnapshot?>(null) }
-    var searchPage by remember { mutableStateOf(0) }
-    var searchDone by remember { mutableStateOf(false) }
-
-    fun loadPage(startAfter: DocumentSnapshot? = null, reset: Boolean = false) {
-        scope.launch {
-            isLoading = true
-            error = null
-            try {
-                var query = db.collection("users")
-                    .orderBy("totalSpots", Query.Direction.DESCENDING)
-                    .limit(10)
-                if (startAfter != null) query = query.startAfter(startAfter)
-                val snap = query.get().await()
-                val list = snap.documents.map { doc ->
-                    RankingUser(
-                        id = doc.id,
-                        username = doc.getString("username") ?: "Unknown",
-                        spots = doc.getLong("totalSpots") ?: 0L,
-                        steps = doc.getLong("totalSteps") ?: 0L
-                    )
-                }
-                users = list
-                if (reset) {
-                    pageCursors.clear()
-                    currentPage = 0
-                }
-                snap.documents.lastOrNull()?.let { last ->
-                    if (pageCursors.size > currentPage) pageCursors[currentPage] = last
-                    else pageCursors.add(last)
-                }
-            } catch (e: Exception) {
-                error = e.message ?: "Failed to load rankings"
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
-    suspend fun computeRank(spots: Long): Int {
-        val higherSnap = db.collection("users")
-            .whereGreaterThan("totalSpots", spots)
-            .get()
-            .await()
-        return higherSnap.size() + 1
-    }
-
-    fun resetSearch() {
-        searchResults = emptyList()
-        searchCursor = null
-        searchPage = 0
-        searchDone = false
-    }
-
-    fun loadSearchPage() {
-        scope.launch {
-            isSearching = true
-            try {
-                val query = searchUsername.trim().lowercase()
-                if (query.isEmpty()) return@launch
-                var fetched = 0
-                val targetCount = (searchPage + 1) * 10
-                var cursor = searchCursor
-                while (searchResults.size < targetCount && !searchDone && fetched < 500) {
-                    var q = db.collection("users")
-                        .orderBy("username", Query.Direction.ASCENDING)
-                        .limit(50)
-                    if (cursor != null) q = q.startAfter(cursor)
-                    val snap = q.get().await()
-                    if (snap.isEmpty) {
-                        searchDone = true
-                        break
-                    }
-                    cursor = snap.documents.last()
-                    val matches = snap.documents.filter { doc ->
-                        (doc.getString("username") ?: "").lowercase().contains(query)
-                    }
-                    val usersMatched = matches.map { doc ->
-                        val spots = doc.getLong("totalSpots") ?: 0L
-                        val steps = doc.getLong("totalSteps") ?: 0L
-                        val rank = computeRank(spots)
-                        RankingUser(
-                            id = doc.id,
-                            username = doc.getString("username") ?: "Unknown",
-                            spots = spots,
-                            steps = steps,
-                            globalRank = rank
-                        )
-                    }
-                    searchResults = (searchResults + usersMatched).distinctBy { it.id }
-                    fetched += snap.size()
-                    searchCursor = cursor
-                }
-            } catch (e: Exception) {
-                searchDone = true
-            } finally {
-                isSearching = false
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) { loadPage(reset = true) }
-
-    LaunchedEffect(searchUsername) {
+    LaunchedEffect(uiState.searchUsername) {
         delay(300)
-        if (searchUsername.trim().isEmpty()) resetSearch()
+        if (uiState.searchUsername.trim().isEmpty()) viewModel.resetSearch()
         else {
-            resetSearch()
-            loadSearchPage()
+            viewModel.resetSearch()
+            viewModel.loadSearchPage()
         }
     }
 
@@ -173,8 +51,8 @@ fun RankingsScreen() {
         Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
-            value = searchUsername,
-            onValueChange = { searchUsername = it },
+            value = uiState.searchUsername,
+            onValueChange = { viewModel.setSearchUsername(it) },
             label = { Text("Search username") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -182,34 +60,34 @@ fun RankingsScreen() {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        if (error != null) Text(error ?: "Error", color = MaterialTheme.colorScheme.error)
+        if (uiState.error != null) Text(uiState.error ?: "Error", color = MaterialTheme.colorScheme.error)
         else {
-            val showingSearch = searchUsername.trim().isNotEmpty()
-            val useSearchResults = showingSearch && searchResults.isNotEmpty()
+            val showingSearch = uiState.searchUsername.trim().isNotEmpty()
+            val useSearchResults = showingSearch && uiState.searchResults.isNotEmpty()
             val listToShow = if (useSearchResults) {
-                val start = searchPage * 10
-                val end = (start + 10).coerceAtMost(searchResults.size)
-                if (start < end) searchResults.subList(start, end) else emptyList()
+                val start = uiState.searchPage * 10
+                val end = (start + 10).coerceAtMost(uiState.searchResults.size)
+                if (start < end) uiState.searchResults.subList(start, end) else emptyList()
             } else {
-                if (showingSearch && !isSearching && !isLoading) emptyList() else users
+                if (showingSearch && !uiState.isSearching && !uiState.isLoading) emptyList() else uiState.users
             }
-            val showNoResults = showingSearch && !isSearching && !isLoading && !useSearchResults
+            val showNoResults = showingSearch && !uiState.isSearching && !uiState.isLoading && !useSearchResults
             if (showNoResults) Text("No results found", color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             Box(modifier = Modifier.weight(1f)) {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize().graphicsLayer(alpha = if (isSearching || isLoading) 0.6f else 1f)
+                    modifier = Modifier.fillMaxSize().graphicsLayer(alpha = if (uiState.isSearching || uiState.isLoading) 0.6f else 1f)
                 ) {
                     itemsIndexed(listToShow) { index, user ->
                         val rank = if (useSearchResults) {
-                            user.globalRank ?: (searchPage * 10 + index + 1)
-                        } else currentPage * 10 + index + 1
+                            user.globalRank ?: (uiState.searchPage * 10 + index + 1)
+                        } else uiState.currentPage * 10 + index + 1
                         RankingRow(user, rank, currentUserId)
                     }
                 }
 
-                if (isSearching || isLoading) {
+                if (uiState.isSearching || uiState.isLoading) {
                     Row(
                         modifier = Modifier.fillMaxWidth().align(Alignment.Center),
                         horizontalArrangement = Arrangement.Center
@@ -225,28 +103,20 @@ fun RankingsScreen() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(
-                    enabled = if (showingSearch) searchPage > 0 else currentPage > 0,
+                    enabled = if (showingSearch) uiState.searchPage > 0 else uiState.currentPage > 0,
                     onClick = {
-                        if (showingSearch) { if (searchPage == 0) return@TextButton; searchPage-- }
-                        else {
-                            if (currentPage == 0) return@TextButton
-                            currentPage--
-                            val cursor = if (currentPage == 0) null else pageCursors.getOrNull(currentPage - 1)
-                            loadPage(startAfter = cursor)
-                        }
+                        if (showingSearch) viewModel.prevSearchPage()
+                        else viewModel.prevPage()
                     }
                 ) { Text("Prev") }
 
-                Text("Page ${if (showingSearch) searchPage + 1 else currentPage + 1}")
+                Text("Page ${if (showingSearch) uiState.searchPage + 1 else uiState.currentPage + 1}")
 
                 TextButton(
-                    enabled = if (showingSearch) !searchDone || (searchPage + 1) * 10 < searchResults.size else users.size == 10,
+                    enabled = if (showingSearch) viewModel.canGoNextSearch() else viewModel.canGoNextRankings(),
                     onClick = {
-                        if (showingSearch) { searchPage++; loadSearchPage() }
-                        else {
-                            val cursor = pageCursors.getOrNull(currentPage) ?: return@TextButton
-                            currentPage++; loadPage(startAfter = cursor)
-                        }
+                        if (showingSearch) viewModel.nextSearchPage()
+                        else viewModel.nextPage()
                     }
                 ) { Text("Next") }
             }
