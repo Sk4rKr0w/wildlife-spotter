@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 data class HomeUiState(
     val dailySteps: Int = 0,
     val totalSteps: Long = 0L,
+    val totalSpots: Long = 0L,
     val isLoadingSteps: Boolean = true
 )
 
@@ -38,6 +39,7 @@ class HomeViewModel : ViewModel() {
                 uiState = uiState.copy(
                     dailySteps = result.dailySteps,
                     totalSteps = baselineTotal + result.dailySteps.toLong(),
+                    totalSpots = result.totalSpots,
                     isLoadingSteps = false
                 )
                 Log.d("StepCounter", "Initialized: daily=${result.dailySteps}, baseline=$baselineTotal")
@@ -53,7 +55,7 @@ class HomeViewModel : ViewModel() {
         val newDaily = uiState.dailySteps + 1
         val newTotal = baselineTotal + newDaily.toLong()
         uiState = uiState.copy(dailySteps = newDaily, totalSteps = newTotal)
-        if (newDaily > 0 && newDaily % 10 == 0) {
+        if (newDaily > 0 && newDaily % 5 == 0) {
             viewModelScope.launch {
                 try {
                     StepsDataSource.sync(userId, todayKey, newDaily, newTotal)

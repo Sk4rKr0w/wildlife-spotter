@@ -194,8 +194,6 @@ fun HomeScreen(
                 modifier = Modifier.padding(vertical = 16.dp)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
-
             Card(
                 modifier = Modifier
                     .fillMaxWidth()

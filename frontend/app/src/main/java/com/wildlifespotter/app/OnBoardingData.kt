@@ -7,15 +7,15 @@ data class OnboardingPage(
 
 val onboardingPages = listOf(
     OnboardingPage(
-        title = "Discover Wildlife Around You, One Sighting at a Time",
-        description = "Join our community of explorers and help map wildlife in your area. Snap photos, record sightings, and track rare species directly from your smartphone. Every report contributes to protecting nature and supporting research."
+        title = "Step Outside and Turn Every Walk into an Adventure",
+        description = "Get out, walk more, and explore the world around you. Our app motivates you to stay active by transforming your daily walks into exciting wildlife discovery journeys."
     ),
     OnboardingPage(
-        title = "Explore Interactive Maps and Hotspots",
-        description = "Navigate detailed, interactive maps to discover wildlife hotspots near you. See recent sightings, explore natural habitats, and plan your next adventure with real-time data from the community."
+        title = "Spot Animals and Capture the Moment",
+        description = "Encounter animals along your path and snap a photo when you see one. Each sighting becomes a personal memory you can revisit, helping you build a visual diary of your outdoor experiences."
     ),
     OnboardingPage(
-        title = "Track Your Observations and Make an Impact",
-        description = "Keep track of your wildlife sightings, view your personal statistics, and watch your contributions grow over time. Your data helps scientists, conservationists, and local communities protect biodiversity."
+        title = "Collect Memories and Compete with Others",
+        description = "Keep track of all the animals you identify, relive your past sightings, and challenge others to see who can discover the most species. Walk more, explore more, and climb the leaderboard."
     )
 )

@@ -268,7 +268,8 @@ fun AddSpotScreen() {
                 confirmButton = {
                     Button(
                         onClick = { },
-                        enabled = false
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Waiting for location...")
                     }

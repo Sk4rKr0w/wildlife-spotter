@@ -173,7 +173,14 @@ object AddSpotDataSource {
                     )
                     .await()
             }
-            UploadResult(true, if (annotation?.label != null) "Identified: ${annotation.label}" else "Spot added!")
+            UploadResult(
+                true,
+                if (annotation?.label != null) {
+                    "Identified: ${annotation.label.replaceFirstChar { it.uppercase() }}"
+                } else {
+                    "Spot added!"
+                }
+            )
         } catch (e: Exception) {
             UploadResult(false, "Error: ${e.message}")
         }

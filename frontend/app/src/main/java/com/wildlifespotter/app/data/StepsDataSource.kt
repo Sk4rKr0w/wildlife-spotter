@@ -8,7 +8,8 @@ object StepsDataSource {
 
     data class StepLoadResult(
         val dailySteps: Int,
-        val baselineTotal: Long
+        val baselineTotal: Long,
+        val totalSpots: Long
     )
 
     suspend fun loadInitial(userId: String, todayKey: String): StepLoadResult {
@@ -26,8 +27,9 @@ object StepsDataSource {
             .await()
         var total = userDoc.getLong("totalSteps") ?: 0L
         total -= daily.toLong()
+        val totalSpots = userDoc.getLong("totalSpots") ?: 0L
 
-        return StepLoadResult(dailySteps = daily, baselineTotal = total)
+        return StepLoadResult(dailySteps = daily, baselineTotal = total, totalSpots = totalSpots)
     }
 
     suspend fun sync(

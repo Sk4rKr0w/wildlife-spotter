@@ -109,8 +109,8 @@ fun SignUp(
                 painter = painterResource(id = R.drawable.whitelogo),
                 contentDescription = "Logo",
                 modifier = Modifier
-                    .width(187.dp)
-                    .height(115.dp)
+                    .width(177.dp)
+                    .height(105.dp)
             )
         }
 
